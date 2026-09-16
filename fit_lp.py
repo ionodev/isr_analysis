@@ -15,7 +15,7 @@ import jcoord
 import millstone_radar_state as mrs
 import stuffr
 # not pip installable yet
-import isr_spec.il_interp as il
+import il_interp as il
 import fit_ionline
 import isr_spec
 
@@ -26,8 +26,27 @@ size=comm.Get_size()
 rank=comm.Get_rank()
 
 
-ilf=il.ilint(fname="isr_spec/ion_line_interpolate.h5")
-ilf_ho=il.ilint(fname="isr_spec/ion_line_interpolate_h_o.h5")
+radar_freq=440.2e6
+ilf=None
+ilf_ho=None
+
+def _init_tables(freq=440.2e6, table_dir=None):
+    """
+    Load the ISR spectral interpolation tables, generating them if missing.
+
+    Mirrors fit_lpi._init_tables. The tables used to be constructed at import
+    time from hardcoded paths under isr_spec/, which stopped working when the
+    tables moved to a cache directory keyed by radar frequency and ion masses.
+    """
+    global radar_freq, ilf, ilf_ho
+    if ilf is not None and freq == radar_freq:
+        return
+    radar_freq = freq
+    ilf    = il.ilint(radar_freq=radar_freq, ion_mass1=32, ion_mass2=16,
+                      table_dir=table_dir, verbose=(rank == 0))
+    ilf_ho = il.ilint(radar_freq=radar_freq, ion_mass1=16, ion_mass2=1,
+                      table_dir=table_dir, verbose=(rank == 0))
+
 
 
 def model_spec(te,ti,mol_frac,vi,dop,topside=False):
@@ -38,7 +57,7 @@ def model_spec(te,ti,mol_frac,vi,dop,topside=False):
         model=ilf_ho.getspec(ne=n.array([1e11]),
                              te=n.array([te]),
                              ti=n.array([ti]),
-                             mol_frac=n.array([mol_frac]),
+                             ion1_frac=n.array([mol_frac]),
                              vi=n.array([0.0]),
                              acf=False,
                              normalize=True,
@@ -47,7 +66,7 @@ def model_spec(te,ti,mol_frac,vi,dop,topside=False):
         model=ilf.getspec(ne=n.array([1e11]),
                           te=n.array([te]),
                           ti=n.array([ti]),
-                          mol_frac=n.array([mol_frac]),
+                          ion1_frac=n.array([mol_frac]),
                           vi=n.array([0.0]),
                           acf=False,
                           normalize=True,
@@ -58,6 +77,53 @@ def model_spec(te,ti,mol_frac,vi,dop,topside=False):
     dhz[len(dhz)-1]=1e6
     specf=si.interp1d(dhz, model)
     return(specf(dop+dop_shift))
+
+
+# a covariance this badly conditioned has no usable off diagonal information
+MAX_COV_COND=1e12
+
+def propagate_te_ne_lp(xhat,Sigma,ne):
+    """
+    Uncertainty of the derived quantities of the long-pulse fit.
+
+    The fit solves for x=[Te/Ti, Ti, vi, power, noise floor, heavy fraction].
+    Both reported quantities depend on several of them,
+
+        Te = (Te/Ti)*Ti,
+        ne = (1+Te/Ti)*snr*T_sys*R^2/P_tx,   snr proportional to power/noise,
+
+    so their uncertainties need the off diagonal covariance.  Writing
+    g=grad f, var(f)=g^T Sigma g, with
+
+        g(Te) = [Ti, Te/Ti, 0, 0, 0, 0],
+        g(ln ne) = [1/(1+Te/Ti), 0, 0, 1/power, -1/noise, 0].
+
+    ne is propagated logarithmically because it is a product and a ratio of
+    fitted parameters.  The weak dependence of the spectral shape on the fitted
+    shape parameters is neglected, as it was before.
+
+    Returns (dTe, dne), NaN where the covariance cannot support the estimate.
+    """
+    C=Sigma[0:5,0:5]
+    if not n.all(n.isfinite(C)):
+        return(n.nan,n.nan)
+    if n.linalg.cond(C) > MAX_COV_COND:
+        return(n.nan,n.nan)
+
+    r=xhat[0]
+    ti=xhat[1]
+    pwr=xhat[3]
+    noise=xhat[4]
+
+    g_te=n.array([ti,r,0.0,0.0,0.0])
+    var_te=g_te.dot(C).dot(g_te)
+
+    g_ne=n.array([1.0/(1.0+r),0.0,0.0,1.0/pwr,-1.0/noise])
+    var_logne=g_ne.dot(C).dot(g_ne)
+
+    dte=n.sqrt(var_te) if var_te > 0 else n.nan
+    dne=n.abs(ne)*n.sqrt(var_logne) if var_logne > 0 else n.nan
+    return(dte,dne)
 
 
 def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
@@ -121,6 +187,9 @@ def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
     model=spec+xhat[4]
     
     sigmas=[n.nan,n.nan,n.nan,n.nan,n.nan,n.nan]
+    # full parameter covariance, always 6x6 so that callers see one shape. the
+    # molecular fraction is not fitted below the topside, and stays nan there.
+    Sigma=n.full((6,6),n.nan)
     try:
         # how much do we oversample the spectrum. this reduces the number of independent measurements
         oversampling_factor=len(meas)/480
@@ -142,7 +211,11 @@ def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
             model1=spec1+xhat1[4]
             J[:,i]=(model1[fit_idx]-model[fit_idx])/dx/sigma
 
-        sigmas=n.sqrt(n.diag(n.linalg.inv(n.dot(n.transpose(J),J))))
+        # J already carries 1/sigma, so this is (J^T S J)^-1
+        Sig=n.linalg.inv(n.dot(n.transpose(J),J))
+        Sig=0.5*(Sig+n.transpose(Sig))
+        Sigma[0:n_par,0:n_par]=Sig
+        sigmas=n.sqrt(n.diag(Sig))
         
         if topside==False:
             # molecular fraction has no uncertainty
@@ -167,7 +240,7 @@ def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
         plt.legend()
         plt.show()
 
-    return(xhat,model,snr,sigmas)
+    return(xhat,model,snr,sigmas,Sigma)
 
 
 def fit_gaussian(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True,frad=440.2e6):
@@ -223,12 +296,15 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
                 remove_space_objects=False,
                 ridx=[35,230],
                 avg_dur=600,
-                output_base=None):
+                output_base=None,
+                radar_freq_hz=440.2e6,
+                table_dir=None):
     """
 
     maximum_data_gap what is the maximum gap between measurements to include in one fit. 
 
     """
+    _init_tables(radar_freq_hz, table_dir=table_dir)
     print(dirname)
     zpm,mpm=mrs.get_tx_power_model(dirn="%s/metadata/powermeter"%(dirname))
 
@@ -287,6 +363,9 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
  #   tv=n.zeros(n_t)
     pp=n.zeros([n_r,6])
     pp_sigma=n.zeros([n_r,6])    
+    # full parameter covariance and the propagated Te uncertainty, per range gate
+    pp_cov=n.zeros([n_r,6,6])
+    pp_dte=n.zeros(n_r)
     
     t_starts=n.zeros(len(fl))
     for fi in range(len(fl)):
@@ -331,6 +410,10 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
 
         pp[:,:]=n.nan
         pp_sigma[:,:]=n.nan
+        # reset per integration period as well, so range gates outside ridx do
+        # not report a zero covariance and a zero uncertainty
+        pp_cov[:,:,:]=n.nan
+        pp_dte[:]=n.nan
 
         space_object_count=n.zeros(n_r,dtype=int)
         space_object_times=[]
@@ -455,14 +538,16 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
             
             if n.sum(n.isnan(LP[ri,:])) == 0:
                 if hgt>400:
-                    xhat,model,snr,sigmas=fit_spec(LP[ri,:],dop_amb,dop_hz,hgt,fit_idx,plot=False)
+                    xhat,model,snr,sigmas,cov=fit_spec(LP[ri,:],dop_amb,dop_hz,hgt,fit_idx,plot=False)
                 else:
-                    xhat,model,snr,sigmas=fit_spec(LP[ri,:],dop_amb,dop_hz,hgt,fit_idx,plot=False)            
+                    xhat,model,snr,sigmas,cov=fit_spec(LP[ri,:],dop_amb,dop_hz,hgt,fit_idx,plot=False)            
                 pp[ri,:]=xhat
                 pp_sigma[ri,:]=sigmas
+                pp_cov[ri,:,:]=cov
             else:
                 pp[ri,:]=n.nan
                 pp_sigma[ri,:]=n.nan                
+                pp_cov[ri,:,:]=n.nan
 
             # get electron density from snr
             # snr = s/n = T_echo/T_sys
@@ -472,9 +557,12 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
             
             pp[ri,3]=(1+xhat[0])*snr*tsys*rgs_km[ri]**2.0/avg_tx_pwr#zpm(i0/1e6)
             
-            # approximately no error contribution from noise floor estimate on the denominator
-            snr_sigma=(n.sqrt(sigmas[3]**2.0+sigmas[4]**2.0))/xhat[4]            
-            pp_sigma[ri,3]=(1+xhat[0])*snr_sigma*tsys*rgs_km[ri]**2.0/avg_tx_pwr#zpm(i0/1e6)            
+            # dTe and dne need the off diagonal covariance: Te is a product of
+            # two fitted parameters and ne depends on the temperature ratio as
+            # well as on the power and the noise floor
+            dte_ri,dne_ri=propagate_te_ne_lp(xhat,cov,pp[ri,3])
+            pp_dte[ri]=dte_ri
+            pp_sigma[ri,3]=dne_ri
 
             LP2[ri,:]=(model-xhat[4])/xhat[3]
             # scaled measurement
@@ -532,17 +620,27 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
         plt.savefig("%s/range_doppler%s/%s/pp_lp_%d.png"%(output_base,postfix,channel,int_t0))
         plt.close()
 
-        ho=h5py.File("%s/range_doppler%s/%s/pp-%d.h5"%(dirname,postfix,channel,int_t0),"w")
+        # output_base, not dirname: the existence check above and the diagnostic
+        # image both use output_base, and writing here would put results in the
+        # raw data directory
+        ho=h5py.File("%s/range_doppler%s/%s/pp-%d.h5"%(output_base,postfix,channel,int_t0),"w")
         ho["Te"]=pp[:,0]*pp[:,1]
         ho["Ti"]=pp[:,1]
         ho["vi"]=pp[:,2]
         ho["ne"]=pp[:,3]
         ho["heavy_ion_frac"]=pp[:,5]    
-        ho["dTe/Ti"]=pp_sigma[:,0]
+        # dTe is propagated from the full covariance. the uncertainty of the
+        # fitted ratio keeps its own key: "dTe/Ti" cannot coexist with a
+        # dataset called dTe, because hdf5 reads the slash as a path.
+        ho["dTe"]=pp_dte
+        ho["dTe_Ti"]=pp_sigma[:,0]
         ho["dTi"]=pp_sigma[:,1]
         ho["dvi"]=pp_sigma[:,2]
         ho["dne"]=pp_sigma[:,3]
         ho["dfrac"]=pp_sigma[:,5]        
+        # full covariance of the fitted parameters, per range gate
+        ho["Sigma"]=pp_cov
+        ho["Sigma_params"]=n.array([b"Te/Ti",b"Ti",b"vi",b"power",b"noise_floor",b"heavy_ion_frac"])
         ho["P_tx"]=avg_tx_pwr#zpm(i0/1e6)
         ho["T_sys"]=tsys
         ho["rgs"]=rgs_km
