@@ -11,6 +11,7 @@ from scipy.ndimage import median_filter
 import traceback
 
 import millstone_radar_state as mrs
+import tx_delay as txd
 
 from mpi4py import MPI
 
@@ -180,6 +181,7 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                               mode=300,
                               output_base=None,
                               max_time_s=None,
+                              tx_delay_us=None,
                               ):
     if output_base is None:
         output_base = dirname
@@ -187,13 +189,32 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
     id_read = DigitalMetadataReader("%s/metadata/id_metadata"%(dirname))
     d_il = DigitalRFReader("%s/rf_data/"%(dirname))
 
+    # min transmit power required to produce an estimate of range-Doppler spectra. lower powers ignored.
+    min_tx_pwr=400e3
+
     zpm,mpm=mrs.get_tx_power_model("%s/metadata/powermeter"%(dirname))
     tx_ant,rx_ant=mrs.get_antenna_select("%s/metadata/antenna_control_metadata"%(dirname))
 
+    # tx-h and the echo channel are digitised by separate receiver chains, so the
+    # transmit waveform has to be shifted onto the echo channel time base before
+    # it can be used as the reference for the range-Doppler ambiguity function.
+    # this used to be a hardcoded n.roll(z_tx,11). measure it instead, from the
+    # coded pulses of this recording and this channel.
+    if tx_delay_us is None:
+        tx_delay_us,tx_delay_spread,tx_delay_n=txd.estimate_channel_delay(dirname,channel,
+                                                                         zpm=zpm,mpm=mpm,
+                                                                         tx_ant=tx_ant,rx_ant=rx_ant,
+                                                                         min_tx_pwr=min_tx_pwr)
+        if tx_delay_us is None:
+            tx_delay_us=txd.DEFAULT_DELAY_US
+            print("falling back to the hardcoded %1.1f us tx delay"%(tx_delay_us))
+    else:
+        print("using configured tx delay %1.3f us"%(tx_delay_us))
+    # in samples of the echo channel
+    tx_delay_samples=tx_delay_us*sr/1e6
+
     os.system("mkdir -p %s/range_doppler_%d%s/%s"%(output_base,mode,postfix,channel))
     idb=id_read.get_bounds()
-    # min transmit power required to produce an estimate of range-Doppler spectra. lower powers ignored.
-    min_tx_pwr=400e3
 
     plot_voltage=False
     use_ideal_filter=True
@@ -347,17 +368,21 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                 T_sys,T_sys2=estimate_tsys(tmm,sid,key,d_il,z_echo)
                 print("%d found %d pulses in %s T_sys %1.0f K"%(rank,lp_idx,channel,T_sys))
 
+                # shift the transmit waveform onto the echo channel time base.
+                # measured by matched filtering tx-h against the transmit pulse
+                # leaking into the echo channel, see tx_delay.py, and applied as
+                # a band limited interpolation so it is not quantised to whole
+                # samples. shift before windowing: shifting an array that has
+                # been zeroed outside a window rings at the window edges.
+                #
+                # this is still not a substitute for interleaving the tx sample
+                # into the echo channel with an analog switch, which would make
+                # the two share a receiver chain and remove this correction
+                # altogether.
+                z_tx=txd.fractional_shift(z_tx,tx_delay_samples)
+
                 z_tx[0:tx0]=0.0
                 z_tx[tx1:read_length]=0.0
-
-                # tbd:
-                # this is eyeballed by comparing with leakthrough tx in echo
-                # this is _not_ a good way to get absolute altitudes. we really should use an analog switch
-                # to interleave the 
-                # tx sample into the echo channel to get the correct relative delay
-                # now we only get 1 us accuracy.
-                # interpolate this by a lot (e.g., 100) and XC with tx-h and leakthrough to determine the signal processing channel delay
-                z_tx=n.roll(z_tx,11)
 
                 if False:
                     plt.plot(4*n.abs(z_tx)/100)
@@ -484,6 +509,7 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                 ho["channel"]=channel
                 ho["P_tx"]=avg_tx_pwr/avg_tx_pwr_samples
                 ho["mode"]=mode
+                ho["tx_delay_us"]=tx_delay_us
                 ho.close()
         except:
             traceback.print_exc()

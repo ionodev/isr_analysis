@@ -344,7 +344,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 print("couldn't read echo")
                 continue
 
-            # no filtering of tx to get better ambiguity function
+            # no filtering of tx to get better ambiguity function.
+            # note that the transmit envelope is the pulse leaking into this same
+            # echo channel, not the tx-h channel, so the tx-h to echo channel
+            # delay (see tx_delay.py) cancels here and needs no correction.
             z_tx=n.copy(z_echo)
 
             if sid[key] == 300:
