@@ -87,7 +87,8 @@ for i in range(nt):
         if "space_object_count" in h.keys():
             so_count[i,:]=h["space_object_count"][()]
 
-        DP[i,:,0]=h["dTe/Ti"][()]
+        # dTe_Ti in files written after the covariance fix, dTe/Ti before it
+        DP[i,:,0]=h["dTe_Ti"][()] if "dTe_Ti" in h else h["dTe/Ti"][()]
         DP[i,:,1]=h["dTi"][()]
         DP[i,:,2]=h["dvi"][()]
         DP[i,:,3]=h["dne"][()]/h["ne"][()]

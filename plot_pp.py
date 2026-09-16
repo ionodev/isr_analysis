@@ -74,6 +74,8 @@ rgs_limits=n.concatenate((rgs,[rgs[-1]+d_rg]))
 
 az=n.zeros(nt)
 el=n.zeros(nt)
+# which integration periods carry a propagated dTe
+have_dTe=n.zeros(nt,dtype=bool)
 
 for i in range(nt):
     h=h5py.File(fl[i],"r")
@@ -105,7 +107,14 @@ for i in range(nt):
             so_count[i,:]=h["space_object_count"][()]
 
 
-        DP[i,:,0]=h["dTe/Ti"][()]
+        # dTe_Ti in files written after the covariance fix, dTe/Ti before it
+        DP[i,:,0]=h["dTe_Ti"][()] if "dTe_Ti" in h else h["dTe/Ti"][()]
+        # absolute dTe, propagated from the full covariance. only files written
+        # after that change have it; older ones carry the ratio uncertainty
+        # only, and DP[:,:,4] stays nan for them.
+        if "dTe" in h:
+            DP[i,:,4]=h["dTe"][()]
+            have_dTe[i]=True
         DP[i,:,1]=h["dTi"][()]
         DP[i,:,2]=h["dvi"][()]
         DP[i,:,3]=h["dne"][()]/h["ne"][()]
@@ -153,6 +162,9 @@ for i in range(nt):
     P[i,n.isnan(DP[i,:,1]),:]=n.nan
     P[i,n.isnan(DP[i,:,2]),:]=n.nan
     P[i,n.isnan(DP[i,:,3]),:]=n.nan
+    if have_dTe[i]:
+        # the covariance was too ill conditioned to propagate Te there
+        P[i,n.isnan(DP[i,:,4]),:]=n.nan
 
     # space object filter
     P[i,so_count[i,:]>nan_space_objects,:]=n.nan
@@ -238,9 +250,14 @@ plt.show()
 
 if False:
     fig,((ax00,ax01),(ax10,ax11))=plt.subplots(2,2,figsize=(16,9))
-    p=ax00.pcolormesh(t_mat,r_mat,DP[:,:,0],vmin=0,vmax=5,cmap="plasma")
-    cb=fig.colorbar(p,ax=ax00)
-    cb.set_label("$\Delta T_e/T_i$ (K)")
+    if n.any(have_dTe):
+        p=ax00.pcolormesh(t_mat,r_mat,DP[:,:,4],vmin=0,vmax=4000,cmap="plasma")
+        cb=fig.colorbar(p,ax=ax00)
+        cb.set_label("$\Delta T_e$ (K)")
+    else:
+        p=ax00.pcolormesh(t_mat,r_mat,DP[:,:,0],vmin=0,vmax=5,cmap="plasma")
+        cb=fig.colorbar(p,ax=ax00)
+        cb.set_label("$\Delta T_e/T_i$")
     ax00.set_xlabel("Time (UT)\n(since %s)"%(stuffr.unix2datestr(tv[0])))
     ax00.set_ylabel("Range (km)")
 
@@ -277,7 +294,8 @@ ho["Ti"]=P_orig[:,:,1]
 ho["vi"]=P_orig[:,:,2]
 ho["ne"]=P_orig[:,:,3]*magic_constant
 ho["time_unix"]=tv
-ho["dTe/Ti"]=DP[:,:,0]
+ho["dTe"]=DP[:,:,4]
+ho["dTe_Ti"]=DP[:,:,0]
 ho["az"]=az
 ho["el"]=el
 ho["dTi"]=DP[:,:,1]

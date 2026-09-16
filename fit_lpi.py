@@ -120,6 +120,52 @@ def model_gaussian(dw,v,lags):
 
 
 
+# a covariance this badly conditioned has no usable off diagonal information
+MAX_COV_COND=1e12
+
+def propagate_te_ne(res,cov,ne_const):
+    """
+    Uncertainty of the quantities derived from the fitted parameters.
+
+    The fit solves for x=[Te/Ti, Ti, vi, zero-lag power].  Both quantities
+    reported to the user depend on more than one of them,
+
+        Te = (Te/Ti)*Ti,
+        ne = zero_lag_power*(1+Te/Ti)*R^2/P_tx = zero_lag_power*ne_const,
+
+    so their uncertainties need the off diagonal covariance and not only the
+    diagonal.  With r=Te/Ti and P0 the zero-lag power,
+
+        var(Te) = Ti^2 var(r) + r^2 var(Ti) + 2 r Ti cov(r,Ti),
+        var(ne) = a^2 var(P0) + b^2 var(r) + 2 a b cov(P0,r),
+
+    where a=dne/dP0=ne_const and b=dne/dr=P0*ne_const/(1+r).  cov(r,Ti) is
+    strongly negative in practice, so neglecting it overstates dTe.
+
+    Returns (dTe, dne), NaN where the covariance cannot support the estimate.
+    """
+    if (not n.all(n.isfinite(cov))) or (not n.isfinite(ne_const)):
+        return(n.nan,n.nan)
+    if n.linalg.cond(cov) > MAX_COV_COND:
+        return(n.nan,n.nan)
+
+    r=res[0]
+    ti=res[1]
+    p0=res[3]
+
+    var_te=ti**2.0*cov[0,0] + r**2.0*cov[1,1] + 2.0*r*ti*cov[0,1]
+
+    a=ne_const
+    b=p0*ne_const/(1.0+r)
+    var_ne=a**2.0*cov[3,3] + b**2.0*cov[0,0] + 2.0*a*b*cov[0,3]
+
+    # a valid covariance cannot give a negative variance, but a nearly
+    # degenerate one can numerically
+    dte=n.sqrt(var_te) if var_te > 0 else n.nan
+    dne=n.sqrt(var_ne) if var_ne > 0 else n.nan
+    return(dte,dne)
+
+
 def fit_gaussian(acf,lags,var,var_scale=4.0,guess=n.array([0,10]),plot=False):
     """
     Fit a gaussian to judge if there is a space object
@@ -183,8 +229,13 @@ def fit_gaussian(acf,lags,var,var_scale=4.0,guess=n.array([0,10]),plot=False):
     S=n.zeros([2*n_m,2*n_m])
     for mi in range(n_m):
         S[mi,mi]=1/std[midx[mi]]**2.0
-        S[2*mi,2*mi]=1/std[midx[mi]]**2.0        
+        S[n_m+mi,n_m+mi]=1/std[midx[mi]]**2.0        
     Sigma=n.linalg.inv(n.dot(n.dot(n.transpose(J),S),J))
+    # J^T S J is symmetric by construction, so Sigma is too. the inverse leaves
+    # rounding at the 1e-16 level, which matters only because Sigma is badly
+    # conditioned at unconstrained range gates; symmetrise so that stored
+    # covariances are exactly symmetric. the diagonal is untouched.
+    Sigma=0.5*(Sigma+n.transpose(Sigma))
     sigmas=n.sqrt(n.real(n.diag(Sigma)))
     
     
@@ -319,14 +370,19 @@ def fit_acf(acf,
     J[n_m:(2*n_m),0]=n.imag((model_dx0-model)/dx0)
     J[n_m:(2*n_m),1]=n.imag((model_dx1-model)/dx1)
     J[n_m:(2*n_m),2]=n.imag((model_dx2-model)/dx2)
-    J[n_m:(2*n_m),3]=n.imag((model_dx2-model)/dx3)    
+    J[n_m:(2*n_m),3]=n.imag((model_dx3-model)/dx3)    
     
     S=n.zeros([2*n_m,2*n_m])
     for mi in range(n_m):
         S[mi,mi]=1/std[midx[mi]]**2.0
-        S[2*mi,2*mi]=1/std[midx[mi]]**2.0
+        S[n_m+mi,n_m+mi]=1/std[midx[mi]]**2.0
         
     Sigma=n.linalg.inv(n.dot(n.dot(n.transpose(J),S),J))
+    # J^T S J is symmetric by construction, so Sigma is too. the inverse leaves
+    # rounding at the 1e-16 level, which matters only because Sigma is badly
+    # conditioned at unconstrained range gates; symmetrise so that stored
+    # covariances are exactly symmetric. the diagonal is untouched.
+    Sigma=0.5*(Sigma+n.transpose(Sigma))
     sigmas=n.sqrt(n.real(n.diag(Sigma)))
     
     # lags for ploting the analytic model, also include real zero-lag
@@ -346,7 +402,7 @@ def fit_acf(acf,
         plt.ylabel(r"Autocorrelation function R($\tau)$")
         plt.title(r"%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\pm$%1.0f (m/s) $\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],mol_fr))
         plt.show()
-    return(xhat,model,sigmas)
+    return(xhat,model,sigmas,Sigma)
 
 
 def fit_acf_ts(acf,
@@ -441,14 +497,19 @@ def fit_acf_ts(acf,
     J[n_m:(2*n_m),0]=n.imag((model_dx0-model)/dx0)
     J[n_m:(2*n_m),1]=n.imag((model_dx1-model)/dx1)
     J[n_m:(2*n_m),2]=n.imag((model_dx2-model)/dx2)
-    J[n_m:(2*n_m),3]=n.imag((model_dx2-model)/dx3)    
+    J[n_m:(2*n_m),3]=n.imag((model_dx3-model)/dx3)    
     
     S=n.zeros([2*n_m,2*n_m])
     for mi in range(n_m):
         S[mi,mi]=1/std[midx[mi]]**2.0
-        S[2*mi,2*mi]=1/std[midx[mi]]**2.0
+        S[n_m+mi,n_m+mi]=1/std[midx[mi]]**2.0
         
     Sigma=n.linalg.inv(n.dot(n.dot(n.transpose(J),S),J))
+    # J^T S J is symmetric by construction, so Sigma is too. the inverse leaves
+    # rounding at the 1e-16 level, which matters only because Sigma is badly
+    # conditioned at unconstrained range gates; symmetrise so that stored
+    # covariances are exactly symmetric. the diagonal is untouched.
+    Sigma=0.5*(Sigma+n.transpose(Sigma))
     sigmas=n.sqrt(n.real(n.diag(Sigma)))
     
     # lags for ploting the analytic model, also include real zero-lag
@@ -468,7 +529,7 @@ def fit_acf_ts(acf,
         plt.ylabel(r"Autocorrelation function R($\tau)$")
         plt.title(r"%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\pm$%1.0f (m/s) $\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],ofrac))
         plt.show()
-    return(xhat[0:4],model,sigmas)
+    return(xhat[0:4],model,sigmas,Sigma)
 
 
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
@@ -725,6 +786,11 @@ def fit_lpifiles(dirn="lpi_f",
             #        var=1/ws
         pp=[]
         dpp=[]        
+        # full fit-parameter covariance and the ne scaling, per range gate, so
+        # that derived quantities can be propagated without refitting
+        covs=[]
+        ne_consts=[]
+        dtes=[]
         model_acfs=n.copy(acf0)
         model_acfs[:,:]=n.nan
         
@@ -747,9 +813,9 @@ def fit_lpifiles(dirn="lpi_f",
             try:
                 if (n.sum(n.isnan(acf[ri,first_lag:n_lags]))/(n_lags-first_lag) < 0.8):
                     if hgt>700:
-                        res,model_acf,dres=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
+                        res,model_acf,dres,cov=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
                     else:
-                        res,model_acf,dres=fit_acf(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
+                        res,model_acf,dres,cov=fit_acf(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
                         
                     model_acfs[ri,first_lag:n_lags]=model_acf/model_acf[0].real
                     guess=res
@@ -757,6 +823,7 @@ def fit_lpifiles(dirn="lpi_f",
                 else:
                     res=n.array([n.nan,n.nan,n.nan,n.nan])
                     dres=n.array([n.nan,n.nan,n.nan,n.nan])                    
+                    cov=n.full((4,4),n.nan)
                 # ne raw
                 res_out=n.copy(res)
                 dres_out=n.copy(dres)                
@@ -768,12 +835,23 @@ def fit_lpifiles(dirn="lpi_f",
                 
                 ne_const=(1+res[0])*rgs[ri]**2.0/ptx#zpm(0.5*(t0+t1))
                 res_out[3]=res[3]*ne_const
-                dres_out[3]=dres_out[3]*ne_const
+
+                # derived quantities need the off diagonal covariance, see
+                # propagate_te_ne. dne was previously only dP0 scaled by
+                # ne_const, which treats Te/Ti as exact.
+                dte,dne=propagate_te_ne(res,cov,ne_const)
+                dres_out[3]=dne
                 pp.append(res_out)
                 dpp.append(dres_out)                
+                dtes.append(dte)
+                covs.append(cov)
+                ne_consts.append(ne_const)
             except:
                 pp.append([n.nan,n.nan,n.nan,n.nan])
                 dpp.append([n.nan,n.nan,n.nan,n.nan])
+                dtes.append(n.nan)
+                covs.append(n.full((4,4),n.nan))
+                ne_consts.append(n.nan)
                 traceback.print_exc()
                 nan_frac=n.sum(n.isnan(acf[ri,first_lag:n_lags]))/(n_lags-first_lag)
                 print(acf[ri,first_lag:n_lags])
@@ -798,6 +876,9 @@ def fit_lpifiles(dirn="lpi_f",
         
         pp=n.array(pp)
         dpp=n.array(dpp)
+        covs=n.array(covs)
+        ne_consts=n.array(ne_consts)
+        dtes=n.array(dtes)
         plt.plot(pp[:,0]*pp[:,1],rgs,".",label=r"$T_e$")
         plt.plot(pp[:,1],rgs,".",label=r"$T_i$")
         plt.plot(pp[:,2]*10,rgs,".",label=r"$v_i\times 10$")
@@ -815,10 +896,24 @@ def fit_lpifiles(dirn="lpi_f",
         ho["vi"]=pp[:,2]
         ho["ne"]=pp[:,3]
         
-        ho["dTe/Ti"]=dpp[:,0]  # tbd fix this
+        # dTe is propagated from the full covariance. the uncertainty of the
+        # fitted ratio is kept as well, under dTe_Ti: the historical name
+        # "dTe/Ti" cannot coexist with a dataset called dTe, because hdf5 reads
+        # the slash as a path and makes dTe a group. readers should try
+        # dTe_Ti first and fall back to dTe/Ti for files written earlier.
+        ho["dTe"]=dtes
+        ho["dTe_Ti"]=dpp[:,0]
         ho["dTi"]=dpp[:,1]
         ho["dvi"]=dpp[:,2]
-        ho["dne"]=dpp[:,3]          # tbd fix this
+        ho["dne"]=dpp[:,3]
+
+        # full covariance of the fitted parameters, per range gate, in the
+        # parameter order given by Sigma_params. the fit solves for zero-lag
+        # power; ne = zero_lag_power*ne_const, so propagating an uncertainty
+        # onto ne needs both this matrix and ne_const.
+        ho["Sigma"]=covs
+        ho["Sigma_params"]=n.array([b"Te/Ti",b"Ti",b"vi",b"zero_lag_power"])
+        ho["ne_const"]=ne_consts
         
         ho["rgs"]=rgs
         ho["t0"]=t0
