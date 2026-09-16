@@ -1,0 +1,21 @@
+# local configuration: keep the example that ships with the repository,
+# ignore experiment configs with machine specific data paths
+config/*
+!config/millstone_2023-09-05.json
+
+# cached ISR spectrum interpolation tables, ~64 MB each, regenerated on demand.
+# the placeholder keeps the directory in a fresh clone
+data/*
+!data/.gitkeep
+
+# diagnostic plots produced by plot_raw_voltage.py and friends
+plots/
+
+# working notes, not part of the pipeline
+TODO.md
+
+__pycache__/
+
+# these are never part of a working tree, listed for completeness
+.git/
+memos/
