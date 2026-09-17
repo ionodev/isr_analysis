@@ -46,8 +46,14 @@ def get_tx_power_model(dirn,plot=False):
 
 def get_antenna_select(dirn,plot=False):
     """
+    Transmit and receive antenna selection as functions of time.
+
     1 = misa
     -1 = zenith
+
+    Returns (tx_sel, rx_sel). Both are step functions of time in microseconds,
+    holding the most recent switch, and holding the first and last value
+    outside the recorded range.
     """
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)
@@ -82,12 +88,21 @@ def get_antenna_select(dirn,plot=False):
     rx_t0=n.copy(rx_t)
     tx_t0=n.copy(tx_t)    
     
-    rx_t[0]=rx_t[0]-24*3600e6
-    rx_t[-1]=rx_t[-1]+24*3600e6
-    tx_t[-1]=tx_t[-1]+24*3600e6
-    tx_t[0]=tx_t[0]-24*3600e6
-    rx_sel=sint.interp1d(rx_t,rx_v)
-    tx_sel=sint.interp1d(tx_t,tx_v)
+    # the antenna selection is a step function: it holds a value until the next
+    # switch. interpolating it linearly makes the value sweep through zero at
+    # every switch, so tests like tx_ant(t)<=-0.99 fail for a slice of each
+    # transition and those pulses are discarded.
+    #
+    # the previous version also moved the first sample 24 hours earlier and the
+    # last 24 hours later to extend the range. with linear interpolation that
+    # ramps from the first value towards the second across the whole 24 hours,
+    # so times before the first event came back close to the *second* event's
+    # value, which is the opposite answer whenever the antenna switched. holding
+    # the first and last value is what extending the range should mean.
+    rx_sel=sint.interp1d(rx_t,rx_v,kind="previous",
+                         bounds_error=False,fill_value=(rx_v[0],rx_v[-1]))
+    tx_sel=sint.interp1d(tx_t,tx_v,kind="previous",
+                         bounds_error=False,fill_value=(tx_v[0],tx_v[-1]))
 
     if plot:
         t=n.linspace(b[0],b[1],num=100000)
@@ -98,7 +113,10 @@ def get_antenna_select(dirn,plot=False):
         plt.ylim([-1.1,1.1])
         plt.legend()
         plt.show()
-    return(rx_sel,tx_sel)
+    # tx first: every caller unpacks this as tx_ant,rx_ant. the previous order
+    # was the other way round, which was harmless only because both are tested
+    # for the same value.
+    return(tx_sel,rx_sel)
 
 
 
