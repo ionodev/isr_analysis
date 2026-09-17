@@ -167,7 +167,8 @@ def fit_gaussian(acf,lags,var,var_scale=4.0,guess=n.array([0,10]),plot=False):
     """
     var=n.real(var)
     # 2x for ground clutter 2x for correlated lags
-    std=n.sqrt(var_scale*var)/n.abs(acf[0].real)
+    # var is a complex variance, the weights are per component: see fit_acf
+    std=n.sqrt(var_scale*var/2.0)/n.abs(acf[0].real)
 
     # normalize all range gates to unity
     scaling_const=acf[0].real
@@ -275,7 +276,21 @@ def fit_acf(acf,
  #   print(n.sqrt(var))
     var=n.real(var)
     # 2x for ground clutter 3x for correlated lags
-    std=n.sqrt(var_scale*var)#/n.abs(acf[0].real)
+    # var is the variance of the *complex* ACF estimate, as outlier_lpi.py
+    # reports it: a complex least squares returns E|xhat-x|^2. The weight matrix
+    # below is built for the real and imaginary components separately, each of
+    # which carries half of that, hence the factor 2.
+    #
+    # var_scale is a deliberate inflation, not a convention factor. The fit
+    # weights lags as if they were independent, and they are not: measured
+    # lag-to-lag correlation is 0.66 at unit offset for the production filtering
+    # (18 kHz pass band, filter_len 100), an effective independent fraction of
+    # 0.34, so an inflation near 2.9 would be needed to approximate the
+    # neglected off diagonal covariance. At 100 kHz and filter_len 20 the
+    # correlation is 0.06 and 1.4 would do. The value 2 sits between them and
+    # under-compensates in the production configuration. The principled fix is a
+    # non-diagonal measurement covariance.
+    std=n.sqrt(var_scale*var/2.0)
     #print(std)
     # estimate zero-lag
     zl_guess=1.1*n.abs(acf[0].real)
@@ -423,7 +438,8 @@ def fit_acf_ts(acf,
  #       guess[4]=1.0  # 100% O+
 
     var=n.real(var)
-    std=n.sqrt(var_scale*var)
+    # complex variance in, per component weights out: see fit_acf
+    std=n.sqrt(var_scale*var/2.0)
 
     # estimate zero-lag
     zl_guess=n.abs(acf[0].real)
@@ -628,11 +644,13 @@ def fit_lpifiles(dirn="lpi_f",
                     #print(rgs[ri])
                     gres,gsigma=fit_gaussian(ao[ri,:],lag,n.real(n.abs(vo[ri,:])),plot=False)
                     
-                    # narrow at two sigma, rather than an absolute width cut
+                    # narrow at three sigma: the variance convention fix shrank
+                    # gsigma by sqrt(2), so three preserves the strictness the
+                    # detector was tuned at. rather than an absolute width cut
                     # paired with an absolute cut on its uncertainty, so the test
                     # does not depend on the scale of the error bars. see the
                     # same change in fit_lpi.py.
-                    if (gres[0] + 2.0*gsigma[0]) < 300.0:
+                    if (gres[0] + 3.0*gsigma[0]) < 300.0:
                         print("debris at %1.0f km dopp width %1.0f+/-%1.0f (m/s)"%(rgs[ri],gres[0],gsigma[0]))
                         # make neighbouring range gates contaminated
 
