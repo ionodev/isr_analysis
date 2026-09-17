@@ -54,7 +54,6 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         reanalyze=cfg.get("reanalyze", False),
         output_base=output_base,
         max_time_s=max_time_s,
-        tx_delay_us=cfg.get("tx_delay_us", None),
     )
 
 
