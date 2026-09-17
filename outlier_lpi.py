@@ -22,6 +22,9 @@ import traceback
 import time
 
 import millstone_radar_state as mrs
+# transmit and receive gate timing, shared with avg_range_doppler_spec.py and
+# tx_delay.py rather than copied into each
+from radar_timing import TMM as tmm, T_INJECTION as T_injection
 
 comm=MPI.COMM_WORLD
 size=comm.Get_size()
@@ -140,12 +143,6 @@ def convolution_matrix(envelope, rmin=0, rmax=100):
     result["ridx"] = ridx
     result["idxm"] = idxm
     return(result)
-
-tmm = {}
-T_injection=1172.0 # May 24th 2022 value
-tmm[300]={"noise0":7800,"noise1":8371,"tx0":76,"tx1":645,"gc":1000,"last_echo":7700,"e_gc":800}
-for i in range(1,33):
-    tmm[i]={"noise0":8400,"noise1":8850,"tx0":76,"tx1":624,"gc":1000,"last_echo":8200,"e_gc":800}
 
 #
 # tbd: add range gates of different sizes

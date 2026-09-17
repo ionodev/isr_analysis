@@ -33,16 +33,10 @@ import millstone_radar_state as mrs
 # channel carrying the transmit samples
 TX_CHANNEL = "tx-h"
 
-# transmit pulse timing in samples from the start of the interpulse period,
-# mirrors the tables in outlier_lpi.py and avg_range_doppler_spec.py
-tmm = {}
-tmm[300] = {"noise0": 7800, "noise1": 8371, "tx0": 76, "tx1": 645, "gc": 1000, "last_echo": 7700, "e_gc": 800}
-for i in range(1, 33):
-    tmm[i] = {"noise0": 8400, "noise1": 8850, "tx0": 76, "tx1": 624, "gc": 1000, "last_echo": 8200, "e_gc": 800}
-tmm[800] = {"noise0": 30176, "noise1": 32033, "tx0": 69, "tx1": 2171, "gc": 3721, "last_echo": 30000, "e_gc": 3721}
+# transmit and receive gate timing, and which sweepids are coded, shared with
+# outlier_lpi.py and avg_range_doppler_spec.py
+from radar_timing import TMM as tmm, CODED_SWEEPIDS
 
-# sweepids of the phase coded pulses, the ones with a sharp correlation peak
-CODED_SWEEPIDS = list(range(1, 33))
 
 # fallback if the delay cannot be measured, the value the code used to hardcode
 DEFAULT_DELAY_US = 11.0

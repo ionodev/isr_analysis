@@ -18,6 +18,9 @@ import stuffr
 import il_interp as il
 import fit_ionline
 import isr_spec
+# transmit pulse length in microseconds, by sweepid; pass pulse_length_us to
+# override for another experiment
+from radar_timing import TX_PULSE_LENGTH_US
 
 from mpi4py import MPI
 
@@ -130,14 +133,6 @@ def propagate_te_ne_lp(xhat,Sigma,ne):
 # A jammer sits here in the recordings this code has been used on; see the note
 # in fit_spectra. Override per experiment through the configuration.
 DEFAULT_NOTCH_BANDS_HZ=[[20e3,28e3]]
-
-
-# Transmit pulse length in microseconds, by sweepid, measured from the tx-h
-# channel of the April 2024 eclipse recording as the half maximum width: mode
-# 300 rises at sample 103 and falls at 581, mode 800 at 103 and 2100. Both are
-# shorter than the transmit gates of the timing table, 569 and 2102 us, which
-# carry guard time. Pass pulse_length_us to override for another experiment.
-TX_PULSE_LENGTH_US={300: 479, 800: 1998}
 
 
 def space_object_halfwidth(mode, range_gate_us, pulse_length_us=None):

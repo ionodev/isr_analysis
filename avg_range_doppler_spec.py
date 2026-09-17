@@ -12,6 +12,11 @@ import traceback
 
 import millstone_radar_state as mrs
 import tx_delay as txd
+# transmit and receive gate timing, shared with outlier_lpi.py and tx_delay.py
+# rather than copied into each. the shared table also carries the coded modes,
+# which this module never processes: the pulse loop selects on sweepid == mode
+# before it consults the table, so they are simply never looked up.
+from radar_timing import TMM as tmm, T_INJECTION as T_injection
 
 from mpi4py import MPI
 
@@ -105,17 +110,6 @@ def range_dop_spec(z_echo,z_tx,rgs,tx0,tx1,fftlen):
 idsr=1000000
 sr=1000000
 
-
-tmm = {}
-T_injection=1172.0 # May 24th 2022 value
-tmm[300]={"noise0":7800,"noise1":8371,"tx0":76,"tx1":645,"gc":1000,"last_echo":7700,"e_gc":800,
-          "read_length":10000
-          }
-
-# this is the horizon scanning mode
-tmm[800]={"noise0":30176,"noise1":32033,"tx0":69,"tx1":2171,"gc":3721,"last_echo":30000,"e_gc":3721,
-          "read_length":40000
-          }
 
 # create data structures for all supported modes
 lp_data={
