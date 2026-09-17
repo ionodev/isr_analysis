@@ -540,6 +540,18 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             # remove outliers and estimate standard deviation 
             if True:
                 print("ratio test")
+                # the fourth moment term below was measured on 20 consecutive
+                # files, 8602 range-lag cells: pooled and aligned to twice the
+                # ACF phase, the pseudo variance is +0.024 +- 0.003 of the
+                # variance, 8.4 sigma, and it grows with signal exactly as
+                # R(tau)^2 requires: +0.004 at weak cells, +0.157 at the
+                # strongest tenth. So the doubt below is correct, and the effect
+                # is confined to the bright gates, where it makes the error
+                # ellipse eccentric by about 17 per cent. Treating it properly
+                # needs a widely linear least squares here and a non-circular
+                # weighting in fit_acf; see memo 6. Not done: measured, bounded,
+                # and judged not worth the rewrite for now.
+                #
                 # tbd: estimate the fourth moments for lagged products
                 # 
                 # <(m_t m_{t+\tau}^*) (m_t^* m_{t+\tau})>
