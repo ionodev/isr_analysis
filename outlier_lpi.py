@@ -680,22 +680,24 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
             try:
                 t0=time.time()
-                # we should probably do a
-                # AA=n.dot(AA,Sinv)
-                # first. this would save all the Sinv dot products. no time to test and validate this now
-                # 
-                # A^H diag(1/sigma)
-                AT=n.conj(AA.T).dot(Sinv)
-                # A^H S^{-1} A (Fisher information matrix)
-                ATA=AT.dot(n.dot(Sinv,AA)).toarray()
+                # scale the design matrix by 1/sigma once, rather than applying
+                # Sinv on each side of every product below. With B = Sinv A,
+                # B^H B is the same Fisher information matrix A^H Sinv^2 A and
+                # B^H mm the same A^H Sinv^2 m, because mm already carries one
+                # factor of 1/sigma and Sinv is real and diagonal.
+                B=Sinv.dot(AA)
+                # (Sinv A)^H
+                BT=n.conj(B.T)
+                # A^H S^{-1} S^{-1} A (Fisher information matrix)
+                ATA=BT.dot(B).toarray()
 
                 # A^H \Sigma^{-1} m_g with ground clutter mitigation
                 # note that 1/sigma is taken earlier when forming mm_g and mm_e
-                # here we add a 1/sigma to get 1/sigma^2 on the diagonal of Sigma^{-1}
-                ATm_g=AT.dot(mm_g)
+                # here we add a 1/sigma to get 1/sigma^2 on the diagonal of \Sigma^{-1}
+                ATm_g=BT.dot(mm_g)
                 # A^H \Sigma^{-1} m_e no ground clutter mitigation
                 # note that 1/sigma is taken earlier when forming mm_g and mm_e
-                ATm_e=AT.dot(mm_e)
+                ATm_e=BT.dot(mm_e)
 
                 # error covariance
                 Sigma=n.linalg.inv(ATA)
