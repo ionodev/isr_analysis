@@ -656,12 +656,14 @@ def fit_lpifiles(dirn="lpi_f",
         mean_el=0.0        
 
         h=h5py.File(int_files[int_idx][0],"r")
-        t0=h["i0"][()]
+        t0=h["t0"][()] if "t0" in h else h["i0"][()]
         print("starting integration period at %s"%(stuffr.unix2datestr(t0)))
         h.close()
         h=h5py.File(int_files[int_idx][-1],"r")
-        # tbd: this should be the timestamp of the end of the file, not the beginning. should be added to output of outlier_lpi.py files.
-        t1=h["i0"][()]
+        # the end of the last file, not its start. files written before
+        # outlier_lpi.py stored t1 only carry i0, and for those the span is
+        # still short by one file length.
+        t1=h["t1"][()] if "t1" in h else h["i0"][()]
         h.close()
         if os.path.exists("%s/pp-%d.h5"%(output_dir,t0)) and reanalyze==False:
             print("already exists")

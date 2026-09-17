@@ -740,8 +740,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             ho["channel"]=channel
             ho["P_tx"]=avg_pwr/avg_pwr_n
             ho["lags"]=mean_lags/sr
-            # tbd: save t0 and t1 to indicate time span in this output
+            # the span this integration period covers. i0 is kept because
+            # existing files and readers use it; t0 and t1 say where the period
+            # ends, which a reader could otherwise only guess at from the start
+            # of the following file.
             ho["i0"]=i0/sr
+            ho["t0"]=i0/sr
+            ho["t1"]=(i0 + avg_dur*idsr)/sr
             ho["T_sys"]=T_sys     # T_sys = alpha*noise_power
             ho["alpha"]=alpha     # This can scale power to T_sys (e.g., noise_power = T_sys/alpha)   T_sys * power/noise_pwr = T_pwr
             #
