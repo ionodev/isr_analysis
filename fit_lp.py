@@ -126,6 +126,12 @@ def propagate_te_ne_lp(xhat,Sigma,ne):
     return(dte,dne)
 
 
+# Doppler bands excluded from the spectral fit by default, [[low,high]] in Hz.
+# A jammer sits here in the recordings this code has been used on; see the note
+# in fit_spectra. Override per experiment through the configuration.
+DEFAULT_NOTCH_BANDS_HZ=[[20e3,28e3]]
+
+
 def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
     
     mol_frac=fit_ionline.mh_molecular_ion_fraction(n.array([hgt]))[0]
@@ -298,7 +304,9 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
                 avg_dur=600,
                 output_base=None,
                 radar_freq_hz=440.2e6,
-                table_dir=None):
+                table_dir=None,
+                fit_bandwidth_hz=50e3,
+                notch_bands_hz=None):
     """
 
     maximum_data_gap what is the maximum gap between measurements to include in one fit. 
@@ -354,9 +362,29 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
     # upstream (avg_range_doppler_spectra.py). This is used for the same reason,
     # i.e., to reduce spectral leakage of this interference signal (and other strong jammers too)
     #
-    # avoid the 20-28 kHz band due to persistent interference there
+    # frequencies to fit: everything inside the fit bandwidth except the bands
+    # named in notch_bands_hz, as [[low,high],...] in Hz.
     #
-    fit_idx=n.where( (n.abs(dop_hz) < 50e3) & (n.abs(dop_hz-24e3)>4e3) )[0]#  (dop_hz>-50e3) & (dop_hz<20e3) )[0]
+    # notch_bands_hz=None keeps the historical 20-28 kHz exclusion; pass an
+    # empty list to fit the whole band. Interference is a property of a
+    # recording, not of the instrument, so this belongs in the configuration of
+    # the experiment, and it should be reviewed per campaign rather than
+    # inherited.
+    #
+    # The default earns its place in the April 2024 eclipse data: the median
+    # spectrum carries a broad feature over roughly 24-28 kHz, peaking at 1.11
+    # times the 30-50 kHz baseline at 26 kHz. That is easy to miss in a band
+    # median, but the fit sees it where it is strong: fitting those 33 bins
+    # raises the residual and inflates every reported uncertainty by about 24
+    # per cent, and moves the fitted vi by 5 per cent.
+    bands = DEFAULT_NOTCH_BANDS_HZ if notch_bands_hz is None else notch_bands_hz
+    keep=n.abs(dop_hz) < fit_bandwidth_hz
+    n_full=int(n.sum(keep))
+    for band in bands:
+        keep=keep & ((dop_hz < band[0]) | (dop_hz > band[1]))
+    fit_idx=n.where(keep)[0]
+    print("notch %s Hz: fitting %d of %d frequency bins within +-%1.0f kHz"
+          %(bands if bands else "none",len(fit_idx),n_full,fit_bandwidth_hz/1e3))
 
 #    tsys=n.zeros(n_t)
 
@@ -671,46 +699,50 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
 #       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-05/usrp-rx0-r_20211205T000000_20211205T160100/",
 #       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-06/usrp-rx0-r_20211206T000000_20211206T132500/",
 #       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-21/usrp-rx0-r_20211221T125500_20211221T220000/"]
-dirs=["/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"]
+if __name__ == "__main__":
+    # a driver kept for running this file directly. it used to execute on
+    # import, so importing fit_lp started analysis runs against hardcoded
+    # paths; run_analysis.py imports this module.
+    dirs=["/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"]
 
-for d in dirs:
-    try:
-        fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
-    except:
-        print("couldn't fit misa")
-        traceback.print_exc()
-    try:
-        fit_spectra(dirname=d, channel="zenith-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
-    except:
-        print("couldn't fit misa")
-        traceback.print_exc()
+    for d in dirs:
+        try:
+            fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
+        except:
+            print("couldn't fit misa")
+            traceback.print_exc()
+        try:
+            fit_spectra(dirname=d, channel="zenith-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
+        except:
+            print("couldn't fit misa")
+            traceback.print_exc()
 
-    try:
-        fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_800_outlier")
-    except:
-        print("couldn't fit misa")
-        traceback.print_exc()
+        try:
+            fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_800_outlier")
+        except:
+            print("couldn't fit misa")
+            traceback.print_exc()
         
 
-#    try:
- #       fit_spectra(dirname=d, channel="zenith-l", avg_dur=300, reanalyze=False)
-  #  except:
-   #     print("couldn't fit zenith")
-    #    traceback.print_exc()        
+    #    try:
+     #       fit_spectra(dirname=d, channel="zenith-l", avg_dur=300, reanalyze=False)
+      #  except:
+       #     print("couldn't fit zenith")
+        #    traceback.print_exc()        
     
       
 
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="zenith-l", avg_dur=300)
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="misa-l", avg_dur=300)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="zenith-l", avg_dur=300)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="misa-l", avg_dur=300)
 
 
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="zenith-l", avg_dur=600)
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="misa-l", avg_dur=600)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="zenith-l", avg_dur=600)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="misa-l", avg_dur=600)
 
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054", n_avg=30)
-
-
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/", channel="zenith-l", n_avg=30)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054", n_avg=30)
 
 
-#fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/", n_avg=30)
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/", channel="zenith-l", n_avg=30)
+
+
+    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/", n_avg=30)
