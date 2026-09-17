@@ -628,7 +628,11 @@ def fit_lpifiles(dirn="lpi_f",
                     #print(rgs[ri])
                     gres,gsigma=fit_gaussian(ao[ri,:],lag,n.real(n.abs(vo[ri,:])),plot=False)
                     
-                    if gres[0]<300.0 and gsigma[0]<100:
+                    # narrow at two sigma, rather than an absolute width cut
+                    # paired with an absolute cut on its uncertainty, so the test
+                    # does not depend on the scale of the error bars. see the
+                    # same change in fit_lpi.py.
+                    if (gres[0] + 2.0*gsigma[0]) < 300.0:
                         print("debris at %1.0f km dopp width %1.0f+/-%1.0f (m/s)"%(rgs[ri],gres[0],gsigma[0]))
                         # make neighbouring range gates contaminated
 

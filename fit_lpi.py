@@ -698,7 +698,15 @@ def fit_lpifiles(dirn="lpi_f",
                     try:
                         gres,gsigma=fit_gaussian(ao[ri,:],lag,n.real(n.abs(vo[ri,:])),plot=False)
                     
-                        if gres[0]<300.0 and gsigma[0]<100:
+                        # a Doppler width this narrow is not thermal plasma, so
+                        # the gate holds a hard target. requiring the width to be
+                        # below the threshold at two sigma, rather than pairing
+                        # an absolute width cut with an absolute cut on its
+                        # uncertainty, keeps the test independent of the scale of
+                        # the error bars: the previous form flagged twice as many
+                        # gates once the fit covariance was repaired, because the
+                        # uncertainties shrank under a cut tuned to the old ones.
+                        if (gres[0] + 2.0*gsigma[0]) < 300.0:
                             print("debris at %1.0f km dopp width %1.0f+/-%1.0f (m/s)"%(rgs[ri],gres[0],gsigma[0]))
                             # make neighbouring range gates contaminated
                             
