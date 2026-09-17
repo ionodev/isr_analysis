@@ -132,6 +132,27 @@ def propagate_te_ne_lp(xhat,Sigma,ne):
 DEFAULT_NOTCH_BANDS_HZ=[[20e3,28e3]]
 
 
+# Transmit pulse length in microseconds, by sweepid, measured from the tx-h
+# channel of the April 2024 eclipse recording as the half maximum width: mode
+# 300 rises at sample 103 and falls at 581, mode 800 at 103 and 2100. Both are
+# shorter than the transmit gates of the timing table, 569 and 2102 us, which
+# carry guard time. Pass pulse_length_us to override for another experiment.
+TX_PULSE_LENGTH_US={300: 479, 800: 1998}
+
+
+def space_object_halfwidth(mode, range_gate_us, pulse_length_us=None):
+    """
+    How many range gates a hard target smears across, either side of its gate.
+
+    A point target's echo is spread over the transmit pulse, so the contaminated
+    region is one pulse length in each direction. This was hardcoded as 17
+    gates, correct only for the 30 us gate and 480 us pulse it was written for.
+    """
+    if pulse_length_us is None:
+        pulse_length_us=TX_PULSE_LENGTH_US.get(int(mode), 479)
+    return int(n.ceil(pulse_length_us/float(range_gate_us)))
+
+
 def fit_spec(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True):
     
     mol_frac=fit_ionline.mh_molecular_ion_fraction(n.array([hgt]))[0]
@@ -306,7 +327,8 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
                 radar_freq_hz=440.2e6,
                 table_dir=None,
                 fit_bandwidth_hz=50e3,
-                notch_bands_hz=None):
+                notch_bands_hz=None,
+                pulse_length_us=None):
     """
 
     maximum_data_gap what is the maximum gap between measurements to include in one fit. 
@@ -340,6 +362,15 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
 
     dop_hz=n.copy(h["dop_hz"][()])
     rgs_km=n.copy(h["rgs_km"][()])
+
+    # how far a hard target smears in range, from the gate size and the pulse
+    # length of this mode rather than the 17 gates that used to be hardcoded
+    rg_us=float(h["rg"][()][1]-h["rg"][()][0]) if "rg" in h else \
+        (rgs_km[1]-rgs_km[0])/(c.c/1e6/2.0/1e3)
+    so_mode=int(h["mode"][()]) if "mode" in h else 300
+    so_halfwidth=space_object_halfwidth(so_mode, rg_us, pulse_length_us)
+    print("space object blanking: mode %d, %1.0f us gates, +-%d gates (%1.0f km)"
+          %(so_mode, rg_us, so_halfwidth, so_halfwidth*(rgs_km[1]-rgs_km[0])))
 
 #    print(LP.shape)
     
@@ -525,10 +556,9 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
                             space_object_rgs.append(rgs_km[ri])
                             space_object_times.append(tall[ai])
 
-                            # one pulse length in each direction
-                            # tbd: this is hard coded for 30 us range-gate and 480 us pulse length
+                            # one pulse length in each direction, in gates
                             if remove_space_objects:
-                                for j in range(-17,17):
+                                for j in range(-so_halfwidth,so_halfwidth+1):
                                     if (j+ri > 0) and (j+ri)<LPA.shape[1]:
                                         LPA[ai,j+ri,:]=n.nan
                                         space_object_count[ri+j]+=1

@@ -109,6 +109,7 @@ def run_fit_lp(datadir, output_base, cfg, lp_cfg, radar_freq_hz=440.2e6, table_d
         table_dir=table_dir,
         fit_bandwidth_hz=cfg.get("fit_bandwidth_hz", 50e3),
         notch_bands_hz=cfg.get("notch_bands_hz", None),
+        pulse_length_us=cfg.get("pulse_length_us", None),
     )
 
 
