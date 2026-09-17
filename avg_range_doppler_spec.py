@@ -42,7 +42,8 @@ def estimate_dc(d_il,tmm,sid,channel):
     n_dc=0.0
     for keyi,key in enumerate(sid.keys()):
         if sid[key] not in tmm.keys():
-            print("unknown pulse, ignoring")
+            print("pulse code %d is not in the timing table, ignoring"%(sid[key]))
+            continue
         # fftw "allocated vector"
         z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False)
         last_echo=tmm[sid[key]]["last_echo"]        
@@ -300,7 +301,8 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                     continue
 
                 if sid[key] not in tmm.keys():
-                    #print("unknown pulse code %d encountered, skipping."%(sid[key]))
+                    # unreachable for the modes this function processes: the
+                    # sweepid test above has already selected one of them
                     continue
 
 #                print("pulse id %d"%(sid[key]))

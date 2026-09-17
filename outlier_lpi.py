@@ -97,7 +97,8 @@ def estimate_dc(d_il,tmm,sid,channel):
     n_dc=0.0
     for keyi,key in enumerate(sid.keys()):
         if sid[key] not in tmm.keys():
-            print("unknown pulse, ignoring")
+            print("pulse code %d is not in the timing table, ignoring"%(sid[key]))
+            continue
         # fftw "allocated vector"
         z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False)
         last_echo=tmm[sid[key]]["last_echo"]        
@@ -299,7 +300,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
         avg_pwr=0.0
         avg_pwr_n=0
-        
+
+        # pulse codes seen in this integration period that the timing table
+        # does not cover, and how many pulses each cost us
+        unknown_codes={}
+
         # start at 3, because we may need to look back for GC
         for keyi in range(3,n_pulses-3):
             
@@ -327,9 +332,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     
 
             if sid[key] not in tmm.keys():
-                print("unknown pulse code %d encountered, halting."%(sid[key]))
+                # counted rather than printed here: an experiment with a mode
+                # the timing table does not know would otherwise print one line
+                # per pulse, hundreds per integration period
+                unknown_codes[sid[key]] = unknown_codes.get(sid[key], 0) + 1
                 continue
-                exit(0)
 
             z_echo=None
             zd=None
@@ -499,6 +506,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             t1=time.time()
             ambiguity_time=t1-t0
             print("prep %d/%d ambiguity time %1.2f read time %1.2f (s)"%(keyi,n_pulses,ambiguity_time,read_time))            
+
+        for code in sorted(unknown_codes.keys()):
+            print("pulse code %d is not in the timing table, skipped %d pulses"%(code,unknown_codes[code]))
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
