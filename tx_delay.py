@@ -156,8 +156,8 @@ def estimate_channel_delay(dirname, channel, n_pulses=100, oversample=100,
                 continue
             t = tmm[sid[key]]
             try:
-                z_tx = d_il.read_vector_c81d(int(key) + t["tx0"], t["tx1"] - t["tx0"], TX_CHANNEL)
-                z_echo = d_il.read_vector_c81d(int(key) + t["tx0"], t["tx1"] - t["tx0"], channel)
+                z_tx = d_il.read_vector_1d(int(key) + t["tx0"], t["tx1"] - t["tx0"], TX_CHANNEL).astype("c8", casting="unsafe", copy=False)
+                z_echo = d_il.read_vector_1d(int(key) + t["tx0"], t["tx1"] - t["tx0"], channel).astype("c8", casting="unsafe", copy=False)
             except Exception:
                 continue
             d_samples, amp = matched_filter_delay(z_tx, z_echo, oversample=oversample,

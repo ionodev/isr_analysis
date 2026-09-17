@@ -39,7 +39,7 @@ def estimate_dc(d_il,tmm,sid,channel):
         if sid[key] not in tmm.keys():
             print("unknown pulse, ignoring")
         # fftw "allocated vector"
-        z_echo = d_il.read_vector_c81d(key, 10000, channel)
+        z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False)
         last_echo=tmm[sid[key]]["last_echo"]        
         gc=tmm[sid[key]]["gc"]
         
@@ -323,8 +323,8 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
 
                     if (tx_ant(key) < -0.99) and (rx_ant(key) < -0.99) and (channel == "zenith-l") and (zenith_pwr > min_tx_pwr):
                         try:
-                            z_echo = d_il.read_vector_c81d(key, read_length, "zenith-l") - z_dc
-                            z_tx = d_il.read_vector_c81d(key, read_length, "tx-h")# - z_dc                        
+                            z_echo = d_il.read_vector_1d(key, read_length, "zenith-l").astype("c8", casting="unsafe", copy=False) - z_dc
+                            z_tx = d_il.read_vector_1d(key, read_length, "tx-h").astype("c8", casting="unsafe", copy=False)# - z_dc                        
                             avg_tx_pwr+=zenith_pwr
                             avg_tx_pwr_samples+=1
                         except:
@@ -333,8 +333,8 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                             continue
                     elif (tx_ant(key) > 0.99) and (rx_ant(key) > 0.99) and (channel == "misa-l") and (misa_pwr > min_tx_pwr):
                         try:
-                            z_echo = d_il.read_vector_c81d(key, read_length, "misa-l") - z_dc
-                            z_tx = d_il.read_vector_c81d(key, read_length, "tx-h")# - z_dc
+                            z_echo = d_il.read_vector_1d(key, read_length, "misa-l").astype("c8", casting="unsafe", copy=False) - z_dc
+                            z_tx = d_il.read_vector_1d(key, read_length, "tx-h").astype("c8", casting="unsafe", copy=False)# - z_dc
 
                             avg_tx_pwr+=misa_pwr
                             avg_tx_pwr_samples+=1
@@ -350,8 +350,8 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                     # if there is enough power on misa, the tx and rx are switched to misa, and we are
                     # analyzing misa
                     if (tx_ant(key) > 0.99) and (rx_ant(key) > 0.99) and (channel == "misa-l") and (misa_pwr > min_tx_pwr):
-                        z_echo = d_il.read_vector_c81d(key, read_length, "misa-l") - z_dc
-                        z_tx = d_il.read_vector_c81d(key, read_length, "tx-h")# - z_dc
+                        z_echo = d_il.read_vector_1d(key, read_length, "misa-l").astype("c8", casting="unsafe", copy=False) - z_dc
+                        z_tx = d_il.read_vector_1d(key, read_length, "tx-h").astype("c8", casting="unsafe", copy=False)# - z_dc
 
                         avg_tx_pwr+=misa_pwr
                         avg_tx_pwr_samples+=1

@@ -96,7 +96,7 @@ def estimate_dc(d_il,tmm,sid,channel):
         if sid[key] not in tmm.keys():
             print("unknown pulse, ignoring")
         # fftw "allocated vector"
-        z_echo = d_il.read_vector_c81d(key, 10000, channel)
+        z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False)
         last_echo=tmm[sid[key]]["last_echo"]        
         gc=tmm[sid[key]]["gc"]
         
@@ -338,7 +338,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             zd=None
 
             try:
-                z_echo = d_il.read_vector_c81d(key, 10000, channel) - z_dc
+                z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
             except:
                 traceback.print_exc()
                 print("couldn't read echo")
@@ -357,7 +357,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # if long pulse, then take the next long pulse
                 next_key = sidkeys[keyi+3]
                 try:
-                    z_echo1 = d_il.read_vector_c81d(next_key, 10000, channel) - z_dc
+                    z_echo1 = d_il.read_vector_1d(next_key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
                 except:
                     traceback.print_exc()
                     print("couldn't read echo")
@@ -368,7 +368,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # if first AC, subtract next one
                 next_key = sidkeys[keyi+1]
                 try:                
-                    z_echo1 = d_il.read_vector_c81d(next_key, 10000, channel) - z_dc
+                    z_echo1 = d_il.read_vector_1d(next_key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
                 except:
                     traceback.print_exc()
                     continue
@@ -378,7 +378,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # if second AC, subtract previous one.
                 next_key = sidkeys[keyi-1]
                 try:
-                    z_echo1 = d_il.read_vector_c81d(next_key, 10000, channel) - z_dc
+                    z_echo1 = d_il.read_vector_1d(next_key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
                 except:
                     traceback.print_exc()
                     continue

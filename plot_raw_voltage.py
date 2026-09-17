@@ -224,8 +224,8 @@ def measure_channel_delays(d_il, dirname, key0, channels, srs, ipp_len,
             t = tmm[sid[key]]
             n_s = t["tx1"] - t["tx0"]
             try:
-                z_tx = d_il.read_vector_c81d(int(key) + t["tx0"], n_s, TX_CHANNEL)
-                z_echo = d_il.read_vector_c81d(int(key) + t["tx0"], n_s, channel)
+                z_tx = d_il.read_vector_1d(int(key) + t["tx0"], n_s, TX_CHANNEL).astype("c8", casting="unsafe", copy=False)
+                z_echo = d_il.read_vector_1d(int(key) + t["tx0"], n_s, channel).astype("c8", casting="unsafe", copy=False)
             except Exception:
                 continue
             d_samples, amp = matched_filter_delay(z_tx, z_echo, oversample=oversample,
@@ -390,7 +390,7 @@ def main():
         zs = {}
 
         for channel in channels:
-            z = d_il.read_vector_c81d(int(key), ipp_len, channel) - z_dc
+            z = d_il.read_vector_1d(int(key), ipp_len, channel).astype("c8", casting="unsafe", copy=False) - z_dc
             if channel in delay_fix:
                 # negative: the echo channel lags tx-h, so move it earlier
                 z = fractional_shift(z, -delay_fix[channel] * srs[channel] / 1e6)
