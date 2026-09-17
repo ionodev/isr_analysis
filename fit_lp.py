@@ -368,7 +368,12 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
     rg_us=float(h["rg"][()][1]-h["rg"][()][0]) if "rg" in h else \
         (rgs_km[1]-rgs_km[0])/(c.c/1e6/2.0/1e3)
     so_mode=int(h["mode"][()]) if "mode" in h else 300
-    so_halfwidth=space_object_halfwidth(so_mode, rg_us, pulse_length_us)
+    so_pulse_us=(TX_PULSE_LENGTH_US.get(so_mode, 479) if pulse_length_us is None
+                 else pulse_length_us)
+    so_halfwidth=space_object_halfwidth(so_mode, rg_us, so_pulse_us)
+    # the long pulse does no range averaging: its range resolution is the pulse
+    # length itself
+    range_resolution_km=so_pulse_us*1e-6*c.c/2.0/1e3
     print("space object blanking: mode %d, %1.0f us gates, +-%d gates (%1.0f km)"
           %(so_mode, rg_us, so_halfwidth, so_halfwidth*(rgs_km[1]-rgs_km[0])))
 
@@ -709,9 +714,13 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
         ho["space_object_count"]=space_object_count
         ho["space_object_times"]=space_object_times
         ho["space_object_rgs"]=space_object_rgs
-        # TBD, fix these
-        ho["range_avg_limits_km"]=[0,1500]
-        ho["range_avg_window_km"]=[480e-6*c.c/2/1e3]
+        # what this run actually covered, rather than the 0-1500 km and 480 us
+        # pulse these were written as. the long pulse does no range averaging,
+        # so the window is its range resolution, and the limits are the span
+        # ridx selects.
+        ho["range_avg_limits_km"]=[rgs_km[ridx[0]],
+                                   rgs_km[min(ridx[1],len(rgs_km)-1)]]
+        ho["range_avg_window_km"]=[range_resolution_km]
         ho.close()
 
         h.close()
