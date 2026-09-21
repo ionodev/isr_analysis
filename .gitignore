@@ -11,8 +11,10 @@ data/*
 # diagnostic plots produced by plot_raw_voltage.py and friends
 plots/
 
-# working notes, not part of the pipeline
-TODO.md
+# working notes. tracked as of the tsys-sky-noise branch: the numbered items
+# carry derivations and measured numbers that are not recorded anywhere else in
+# the repository, so losing them with a fresh clone would lose the reasoning
+# behind several open defects.
 
 __pycache__/
 
