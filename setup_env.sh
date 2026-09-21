@@ -21,6 +21,11 @@ python3 -m venv --system-site-packages "${VENV_DIR}"
 # Geographic coordinate conversion (required by fit_lpi)
 "${VENV_DIR}/bin/pip" install git+https://github.com/jvierine/jcoord.git
 
+# Sky model, healpix maps and coordinate transforms. Only the system
+# temperature comparison needs these; the analysis pipeline does not.
+# pygdsm downloads its component maps on first use, into the astropy cache.
+"${VENV_DIR}/bin/pip" install pygdsm healpy astropy
+
 echo ""
 echo "Environment ready at ${VENV_DIR}"
 echo "Activate with:  source ${VENV_DIR}/bin/activate"
