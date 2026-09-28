@@ -14,7 +14,8 @@ import os
 import jcoord
 import millstone_radar_state as mrs
 import stuffr
-# not pip installable yet
+# Local interpolation-table loader.  It regenerates missing tables
+# collectively when this module is run under MPI.
 import il_interp as il
 import fit_ionline
 import isr_spec
@@ -33,28 +34,22 @@ radar_freq=440.2e6
 ilf=None
 ilf_ho=None
 
-def _init_tables(freq=440.2e6, table_dir=None):
-    """
-    Load the ISR spectral interpolation tables, generating them if missing.
 
-    Mirrors fit_lpi._init_tables. The tables used to be constructed at import
-    time from hardcoded paths under isr_spec/, which stopped working when the
-    tables moved to a cache directory keyed by radar frequency and ion masses.
-    """
+def _init_tables(freq, table_dir=None):
+    """Collectively load or regenerate both ion-line interpolation tables."""
     global radar_freq, ilf, ilf_ho
     if ilf is not None and freq == radar_freq:
         return
     radar_freq = freq
-    ilf    = il.ilint(radar_freq=radar_freq, ion_mass1=32, ion_mass2=16,
+    ilf = il.ilint(radar_freq=freq, ion_mass1=32, ion_mass2=16,
+                   table_dir=table_dir, verbose=(rank == 0))
+    ilf_ho = il.ilint(radar_freq=freq, ion_mass1=16, ion_mass2=1,
                       table_dir=table_dir, verbose=(rank == 0))
-    ilf_ho = il.ilint(radar_freq=radar_freq, ion_mass1=16, ion_mass2=1,
-                      table_dir=table_dir, verbose=(rank == 0))
-
 
 
 def model_spec(te,ti,mol_frac,vi,dop,topside=False):
     # doppler shift = 2*f*v/c
-    dop_shift=2*440.2e6*vi/c.c
+    dop_shift=2*radar_freq*vi/c.c
 
     if topside:
         model=ilf_ho.getspec(ne=n.array([1e11]),
@@ -748,13 +743,13 @@ if __name__ == "__main__":
         try:
             fit_spectra(dirname=d, channel="zenith-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
         except:
-            print("couldn't fit misa")
+            print("couldn't fit zenith")
             traceback.print_exc()
 
         try:
             fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_800_outlier")
         except:
-            print("couldn't fit misa")
+            print("couldn't fit low-elevation misa")
             traceback.print_exc()
         
 
