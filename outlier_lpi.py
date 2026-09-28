@@ -25,6 +25,8 @@ import millstone_radar_state as mrs
 # transmit and receive gate timing, shared with avg_range_doppler_spec.py and
 # tx_delay.py rather than copied into each
 from radar_timing import TMM as tmm, T_INJECTION as T_injection
+# design matrix columns for detected satellite echoes
+import satellite_columns as satcol
 
 comm=MPI.COMM_WORLD
 size=comm.Get_size()
@@ -165,11 +167,29 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               lag_avg=1,
               output_base=None,
               max_time_s=None,
+              # detected satellite echoes, modelled instead of rejected. An
+              # object whose for_period(i0, i1) returns {pulse key: [(delay in
+              # samples relative to the transmit template, Doppler in Hz),
+              # ...]}, e.g. satellite_columns.CatalogueDetections. Each echo
+              # gets its own design matrix column with a free complex amplitude
+              # per lag. None leaves the inversion as it was.
+              satellite_detections=None,
+              # transmit template the satellite columns are built from:
+              # "average" the leakage of its pulse code averaged over the period,
+              # whose lower noise lets brighter echoes be modelled; "pulse" each
+              # pulse's own leakage, as the plasma columns use
+              satellite_template="average",
               # compute the per row noise weights in double precision; see the
               # comment where it is used for why a bright echo needs it. False
               # reproduces the output of the code before this option, which
               # differs only at roundoff level when no bright echo is present.
               precise_weights=True,
+              # reject lagged products by the ratio test and the local power
+              # cut below. Off when satellite echoes are to be modelled, as
+              # those tests reject the very products the columns explain.
+              outlier_rejection=True,
+              # indices of the integration periods to analyse, None for all
+              periods=None,
               ):
     if output_base is None:
         output_base = dirname
@@ -235,8 +255,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
     
 
+    period_list = list(range(n_times)) if periods is None else [p for p in periods if p < n_times]
+
     # go through one integration window at a time
-    for ai in range(rank,n_times,size):
+    for ai in period_list[rank::size]:
 
         
         i0 = ai*int(avg_dur*idsr) + idb[0]
@@ -251,6 +273,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
         n_pulses=len(sid.keys())
 
+        # satellite echoes detected in this period, and one entry per satellite
+        # column: (pulse key, delay in samples, Doppler in Hz)
+        sat_det={}
+        if satellite_detections is not None:
+            sat_det=satellite_detections.for_period(i0,i0+int(avg_dur*idsr)+40000)
+        sat_cols=[]
+
         # USRP DC offset bug due to truncation instead of rounding.
         # Ryan Volz has a fix for firmware in USRPs.
         # note that this appears to change as a function of time
@@ -259,6 +288,20 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         # usrp n200 is fixed
         if channel == "zenith-l2":
             z_dc=0.0
+
+        # the per code average transmit template for the satellite columns
+        sat_avg_tx={}
+        if len(sat_det) > 0 and satellite_template == "average":
+            def keep_pulse(k):
+                if channel in ("zenith-l","zenith-l2"):
+                    return (tx_ant(k) <= -0.99) and (rx_ant(k) <= -0.99) and (zpm(k/1e6) >= min_tx_pwr)
+                return (tx_ant(k) >= 0.99) and (rx_ant(k) >= 0.99) and (mpm(k/1e6) >= min_tx_pwr)
+            skeys=list(sid.keys())
+            sat_avg_tx=satcol.average_templates(d_il,skeys[3:len(skeys)-3],sid,channel,
+                                                z_dc,tmm,keep_pulse)
+            for code in sorted(sat_avg_tx.keys()):
+                print("satellite template, code %d: %d pulses, scatter %.1f dB"%(
+                    code,sat_avg_tx[code][1],10*n.log10(sat_avg_tx[code][2]+1e-30)))
         
         bg_samples=[]
         bg_plus_inj_samples=[]
@@ -267,6 +310,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         sidkeys=list(sid.keys())
 
         A=[]
+        # satellite column vectors, one list per lag holding for every entry of
+        # A[li] the [(column index, column), ...] of that pulse
+        S=[]
         mgs=[]
         mes=[]
 #        sigmas=[]
@@ -299,6 +345,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             rmins.append(rmin)
             idxms.append(cm["idxm"])
             A.append([])
+            S.append([])
             mgs.append([])
             mes.append([])
         n_good_estimates=0
@@ -345,6 +392,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
             z_echo=None
             zd=None
+            next_key=None
 
             try:
                 z_echo = d_il.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
@@ -483,7 +531,22 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             zd[0:gc]=n.nan
             z_echo[0:gc]=n.nan
             z_echo[last_echo:10000]=n.nan
-            zd[last_echo:10000]=n.nan        
+            zd[last_echo:10000]=n.nan
+
+            # satellite templates for this pulse. The plain and the ground
+            # clutter subtracted lagged products share one design matrix, and
+            # the latter carry the echoes of the pulse this one is differenced
+            # against, so an echo detected only there gets a column here too;
+            # its amplitude in the plain products then comes out near zero.
+            sat_here=sat_det.get(key,[])
+            if len(sat_here)==0 and next_key is not None:
+                sat_here=sat_det.get(next_key,[])
+            sat_templates=[]
+            sat_tx=sat_avg_tx[sid[key]][0] if sid[key] in sat_avg_tx else z_tx
+            for sat_delay,sat_doppler in sat_here:
+                sat_templates.append(satcol.satellite_template(sat_tx,sat_delay,sat_doppler,lpf,gc,last_echo,sr=sr))
+                sat_cols.append((key,sat_delay,sat_doppler))
+            sat_col0=len(sat_cols)-len(sat_templates)
             t1=time.time()
             read_time=t1-t0
             t0=time.time()
@@ -508,12 +571,33 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     mgs[li].append(measg[m0:m1])
                     mes[li].append(mease[m0:m1])
                     A[li].append(TM)
+                    S[li].append([(sat_col0+si,satcol.template_lag_column(st,lags[li+ai],decim,m0,m1)) for si,st in enumerate(sat_templates)])
             t1=time.time()
             ambiguity_time=t1-t0
             print("prep %d/%d ambiguity time %1.2f read time %1.2f (s)"%(keyi,n_pulses,ambiguity_time,read_time))            
 
         for code in sorted(unknown_codes.keys()):
             print("pulse code %d is not in the timing table, skipped %d pulses"%(code,unknown_codes[code]))
+
+        # append the satellite columns, now that their number is known. Each
+        # column is nonzero only in the rows of its own pulse.
+        n_sat=len(sat_cols)
+        if n_sat > 0:
+            print("%d satellite columns"%(n_sat))
+            for li in range(n_lags):
+                for pi in range(len(A[li])):
+                    cols=S[li][pi]
+                    if len(cols) > 0:
+                        sdata=n.concatenate([col for _,col in cols])
+                        srow=n.tile(n.arange(n_meas,dtype=int),len(cols))
+                        scol=n.repeat(n.array([ci for ci,_ in cols],dtype=int),n_meas)
+                        SM=sparse.csc_matrix((sdata,(srow,scol)),shape=(n_meas,n_sat),dtype=n.complex64)
+                    else:
+                        SM=sparse.csc_matrix((n_meas,n_sat),dtype=n.complex64)
+                    A[li][pi]=sparse.hstack([A[li][pi],SM],format="csc")
+        sat_amp_e=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
+        sat_amp_g=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
+        sat_amp_var=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
@@ -625,14 +709,15 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     plt.show()
 
 
-                # is this threshold too high?
-                # maybe 6-7 might still be possible.
-                mm_em[ratio_test > 10]=n.nan
-                mm_gm[ratio_test_g > 10]=n.nan
+                if outlier_rejection:
+                    # is this threshold too high?
+                    # maybe 6-7 might still be possible.
+                    mm_em[ratio_test > 10]=n.nan
+                    mm_gm[ratio_test_g > 10]=n.nan
 
-                # these will be shit no matter what
-                mm_em[localized_sigma > 100*msig]=n.nan
-                mm_gm[localized_sigma > 100*msig]=n.nan
+                    # these will be shit no matter what
+                    mm_em[localized_sigma > 100*msig]=n.nan
+                    mm_gm[localized_sigma > 100*msig]=n.nan
 
                 ok_count+=n.sum((n.isnan(mm_em)!=True)*(n.isnan(mm_gm)!=True),axis=0)
                 meas_count+=n_ipp
@@ -697,6 +782,20 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # B^H mm the same A^H Sinv^2 m, because mm already carries one
                 # factor of 1/sigma and Sinv is real and diagonal.
                 B=Sinv.dot(AA)
+                if n_sat > 0:
+                    # a bright satellite's rows are weighted down by orders of
+                    # magnitude, which leaves the columns of B on very different
+                    # scales and the normal matrix too ill conditioned to invert
+                    # in double precision. Scale every column to unit norm,
+                    # solve, and scale back: the same estimate, computed stably.
+                    col_norm=n.sqrt(n.asarray(B.multiply(B.conj()).real.sum(axis=0))).ravel()
+                    col_norm[(col_norm==0) | ~n.isfinite(col_norm)]=1.0
+                    if li in (0,n_lags//2):
+                        BTu=n.conj(B.T)
+                        print("lag %d normal matrix condition number: %.2e as it was, %.2e with the columns scaled"%(
+                            li,n.linalg.cond(BTu.dot(B).toarray()),
+                            n.linalg.cond((BTu.dot(B).toarray())/n.outer(col_norm,col_norm))))
+                    B=B.dot(sparse.diags(1.0/col_norm))
                 # (Sinv A)^H
                 BT=n.conj(B.T)
                 # A^H S^{-1} S^{-1} A (Fisher information matrix)
@@ -719,15 +818,27 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # ML estimate for ACF lag with ground clutter mitigation measures            
                 xhat_g=n.dot(Sigma,ATm_g)
 
+                if n_sat > 0:
+                    # back from the scaled unknowns
+                    xhat_e=xhat_e/col_norm
+                    xhat_g=xhat_g/col_norm
+                    Sigma=Sigma/n.outer(col_norm,col_norm)
+
                 t1=time.time()
                 t_simple=t1-t0        
                 print("simple %1.2f"%(t_simple))
-                acfs_e[ rmins[li]:rmax, li ]=xhat_e[0:(rmax-rmins[li])]
-                noise_e[li]=xhat_e[len(xhat_e)-1]
-                acfs_g[ rmins[li]:rmax, li ]=xhat_g[0:(rmax-rmins[li])]
-                noise_g[li]=xhat_g[len(xhat_g)-1]                
+                # unknowns: the plasma gates, the background, then the satellites
+                n_pl=rmax-rmins[li]
+                acfs_e[ rmins[li]:rmax, li ]=xhat_e[0:n_pl]
+                noise_e[li]=xhat_e[n_pl]
+                acfs_g[ rmins[li]:rmax, li ]=xhat_g[0:n_pl]
+                noise_g[li]=xhat_g[n_pl]
 
-                acfs_var[ rmins[li]:rmax, li ] = n.diag(Sigma.real)[0:(rmax-rmins[li])]
+                acfs_var[ rmins[li]:rmax, li ] = n.diag(Sigma.real)[0:n_pl]
+                if n_sat > 0:
+                    sat_amp_e[:,li]=xhat_e[(n_pl+1):]
+                    sat_amp_g[:,li]=xhat_g[(n_pl+1):]
+                    sat_amp_var[:,li]=n.diag(Sigma.real)[(n_pl+1):]
             except:
                 traceback.print_exc()
                 print("something went wrong.")
@@ -777,6 +888,30 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             ho["retained_measurement_fraction"]=n.array(ok_count/meas_count,dtype=n.float32)
             ho["meas_delays_us"]=meas_delays_us
             ho["diagnostic_pwr_spec"]=pwr_spec/n_pwr_spec
+            # written only when not at their defaults, so a default run writes
+            # the same file as before
+            if satellite_detections is not None or not outlier_rejection:
+                ho["outlier_rejection"]=outlier_rejection
+            if satellite_detections is not None:
+                # one entry per satellite column: the pulse, and the delay
+                # (samples, relative to the transmit template) and Doppler (Hz)
+                # the column was built with
+                ho["sat_keys"]=n.array([sc[0] for sc in sat_cols],dtype=n.int64)
+                ho["sat_delay_samples"]=n.array([sc[1] for sc in sat_cols],dtype=n.float64)
+                ho["sat_doppler_hz"]=n.array([sc[2] for sc in sat_cols],dtype=n.float64)
+                # fitted complex amplitude of each column per lag, for the plain
+                # and the ground clutter subtracted lagged products, and its
+                # variance. The magnitude is the echo energy of the pulse and
+                # should not change with lag.
+                ho["sat_amp_e"]=sat_amp_e
+                ho["sat_amp_g"]=sat_amp_g
+                ho["sat_amp_var"]=sat_amp_var
+                ho["satellite_template"]=satellite_template
+                if len(sat_avg_tx) > 0:
+                    # per code: pulses averaged, and their scatter about the average
+                    ho["sat_template_codes"]=n.array(sorted(sat_avg_tx.keys()),dtype=int)
+                    ho["sat_template_pulses"]=n.array([sat_avg_tx[c][1] for c in sorted(sat_avg_tx.keys())],dtype=int)
+                    ho["sat_template_scatter"]=n.array([sat_avg_tx[c][2] for c in sorted(sat_avg_tx.keys())])
             ho.close()
         else:
             print("no estimates in this integration period")
