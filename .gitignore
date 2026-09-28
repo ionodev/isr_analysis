@@ -11,7 +11,7 @@ data/*
 # diagnostic plots produced by plot_raw_voltage.py and friends
 plots/
 
-# working notes, not part of the pipeline
+# working notes are kept in the documents project (TODO.tex), not here
 TODO.md
 
 __pycache__/

@@ -293,4 +293,65 @@ them to absolute density in m⁻³. If you have run the calibration workflow
 `magic_const.h5` in the same directory as the `pp-*.h5` files and it will be
 picked up automatically.
 
+## System temperature against the 440 MHz sky
+
+Three tools compare the measured system noise temperature with a global sky
+model, which tests the noise injection calibration end to end.
+
+```bash
+python3 tsys_harvest.py config/millstone_eclipse2024.json -o tsys.h5
+python3 compare_tsys_sky.py tsys.h5 -o tsys_sky/
+```
+
+`tsys_harvest.py` collects the `T_sys` that every integration period already
+carries, from all analysis output sets found under `data_dir`, and attaches the
+antenna pointing, which the analysis does not record because the plasma
+parameter fits do not need it.
+
+`sky_noise_model.py` evaluates PyGDSM at the radar frequency. The default is
+GSM2008 on its `haslam` basemap, which is locked to the Haslam 408 MHz survey
+and carries its 1 degree resolution, so 440 MHz is an 8 per cent extrapolation
+from the anchor map. The CMB is included: PyGDSM leaves it out by default
+because its models describe galactic and extragalactic emission, but an antenna
+does not know the difference. Run the module directly to see how much sky signal
+there is to find.
+
+`compare_tsys_sky.py` masks periods when a bright source is in the beam, rejects
+interference by its shape in time rather than the size of its residual, and
+fits `T_sys = T_0 + eta * T_sky`.
+
+### Result, eclipse2024, zenith antenna
+
+| | value |
+|---|---|
+| `T_0` | 156.2 +- 1.6 K |
+| `eta` | 0.661 +- 0.055 |
+| variance explained | 0.76 |
+
+`T_0` is receiver plus spillover plus atmosphere. `eta` is **not** beam
+efficiency alone: `T_sys` is derived as `noise/alpha` with `alpha` proportional
+to `1/T_INJECTION`, so the whole series scales with the assumed 1172 K, and this
+fit cannot separate a beam efficiency of 0.66 from a `T_INJECTION` that should
+be 1773 K. Uncertainties are from a 30 minute moving block bootstrap; the least
+squares covariance is optimistic by more than an order of magnitude here,
+because consecutive ten second periods see the same sky.
+
+Two independent estimators agree on both numbers to 1 per cent:
+`range_doppler_300_outlier` gives the values above and `lpi_30`, once its bias
+is undone (see `lpi_bias_factor`), gives `T_0 = 155.3 +- 1.7 K` and
+`eta = 0.654 +- 0.060`.
+
+### Two things this exposed
+
+**The zenith antenna is not at the zenith.** Its boresight is at elevation
+88.16, azimuth 172.9, which puts it at declination 40.79 against Cygnus A's
+40.734. Cyg A therefore transits the beam centre once per sidereal day and takes
+`T_sys` from 170 K to 1600 K. This reproduces, from a radio source, the 1.84
+degree offset the hard target work measured from satellite echoes.
+
+**MISA cannot be fitted from the recorded metadata.** Its azimuth alternates
+between integration periods and the antenna control metadata does not locate the
+switches well enough to say which azimuth a ten second period belongs to. It is
+reported but flagged as not a measurement.
+
 > Code is still under active development.
