@@ -165,6 +165,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               lag_avg=1,
               output_base=None,
               max_time_s=None,
+              # compute the per row noise weights in double precision; see the
+              # comment where it is used for why a bright echo needs it. False
+              # reproduces the output of the code before this option, which
+              # differs only at roundoff level when no bright echo is present.
+              precise_weights=True,
               ):
     if output_base is None:
         output_base = dirname
@@ -582,6 +587,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ratio_test_g=n.abs(mm_gm)/sigma_lp_est_g
 
                 localized_sigma=n.abs(n.copy(mm_em))**2.0
+                if precise_weights:
+                    # the lagged products are complex64, so this running mean
+                    # would otherwise be a single precision FFT, whose roundoff
+                    # (~1e-7 of the largest value) swamps every pulse's weight
+                    # in the rows a bright echo reaches, clean pulses included
+                    localized_sigma=localized_sigma.astype(n.float64)
                 wf=n.repeat(1/10,10)
                 WF=fft(wf,localized_sigma.shape[0])
                 for ri in range(mm_em.shape[1]):
