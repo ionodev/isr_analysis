@@ -27,6 +27,7 @@ import millstone_radar_state as mrs
 from radar_timing import TMM as tmm, T_INJECTION as T_injection
 # design matrix columns for detected satellite echoes
 import satellite_columns as satcol
+from raw_reader import RawReader
 
 comm=MPI.COMM_WORLD
 size=comm.Get_size()
@@ -197,6 +198,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               outlier_rejection=True,
               # indices of the integration periods to analyse, None for all
               periods=None,
+              # read the raw voltage with raw_reader.RawReader, one read per
+              # second of data, instead of digital_rf's several small reads per
+              # pulse. The samples are identical; False uses DigitalRFReader.
+              fast_read=True,
               ):
     if output_base is None:
         output_base = dirname
@@ -205,7 +210,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
     
         
     id_read = DigitalMetadataReader("%s/metadata/id_metadata"%(dirname))
-    d_il = DigitalRFReader("%s/rf_data/"%(dirname))
+    d_il = RawReader("%s/rf_data/"%(dirname)) if fast_read else DigitalRFReader("%s/rf_data/"%(dirname))
 
     zpm,mpm=mrs.get_tx_power_model("%s/metadata/powermeter"%(dirname))
     tx_ant,rx_ant=mrs.get_antenna_select("%s/metadata/antenna_control_metadata"%(dirname))    

@@ -265,6 +265,28 @@ This is a software workaround. The real fix requires a hardware modification: In
 into the echo channel with an analog switch, so that both pass through one
 receiver chain and no correction is needed at all.
 
+## Reading the raw data
+
+The raw voltage is one HDF5 file per second per channel, on spinning disks.
+Reading it pulse by pulse through `DigitalRFReader` costs several small reads
+per pulse, and is limited by disk seeks. `raw_reader.py` reads whole seconds
+instead, with one read each, and returns identical samples:
+
+```python
+from raw_reader import RawReader, pulse_index
+r = RawReader("%s/rf_data/" % dirname)               # r.read_vector_1d(key, 10000, "zenith-l")
+keys = pulse_index(dirname)["key"]                    # every pulse, cached after the first call
+```
+
+`pulse_index` builds a list of all pulses once (about 10 minutes for the
+eclipse recording) in `~/.cache/isr_analysis/`, and later loads it in under a
+second. For scripts that read a lot of data, sort the work by time, give each
+process a contiguous stretch, and let 8 to 16 processes read at once; more
+processes read slower. `outlier_lpi.py` uses the reader by default
+(`fast_read=True`), which changes little there because the inversion is
+limited by computation. `validate_raw_reader.py` checks that the output is bit
+identical.
+
 ## Plotting plasma parameters
 
 After the fitting step has produced `pp-*.h5` files, use `plot_pp.py` to
