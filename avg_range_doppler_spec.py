@@ -425,8 +425,10 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
             if avg_type=="median":
                 RDS_LP_var=n.var(RDS_LP[0:lp_idx,:,:],axis=0)                        
                 RDS_LP=n.median(RDS_LP[0:lp_idx,:,:],axis=0)
-            if avg_type=="mean":
-                RDS_LP_var=n.var(RDS_LP[0:lp_idx,:,:],axis=0)            
+            # elif: with a second if, a median fell through to the outlier
+            # branch below and was averaged again as if it were the pulses
+            elif avg_type=="mean":
+                RDS_LP_var=n.var(RDS_LP[0:lp_idx,:,:],axis=0)
                 RDS_LP=n.mean(RDS_LP[0:lp_idx,:,:],axis=0)
 
             else:
