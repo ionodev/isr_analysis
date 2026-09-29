@@ -11,9 +11,10 @@ from the overwritten weights.
 
 For a few integration periods of the archived lpi_30 products this fits every
 range gate twice with fit_lpi.fit_lpifiles, unchanged: once with the fixed
-interpolation and once with getspec from OLD_COMMIT. fit_lpifiles does not
-store the topside O+ fraction it fits (fit_acf_ts, above 700 km), so it is
-recorded here by watching the fit's minimizations. Every fit is its own
+interpolation and once with getspec from OLD_COMMIT. The topside O+ fraction
+(fit_acf_ts, above 700 km) is recorded here by watching the fit's
+minimizations, also where the fit's covariance fails; fit_lpifiles writes it
+to the pp files as O_frac since fit-ts-composition. Every fit is its own
 process, all at once.
 
     python3 validate_il_interp.py --out /some/dir

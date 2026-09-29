@@ -359,6 +359,11 @@ def fit_acf(acf,
         
 
     dx0=0.05*xhat[0]
+    # the table ends at Te/Ti=ilf.te_ti_ratio1 and clamps beyond it, so from
+    # a fit on that bound a forward step changes nothing, the Jacobian loses
+    # its Te/Ti column and Sigma cannot be inverted. step backwards there.
+    if xhat[0]+dx0 > ilf.te_ti_ratio1:
+        dx0=-dx0
     dx1=0.05*xhat[1]
     dx2=0.05*n.abs(xhat[2])
     dx3=0.05*xhat[3]
@@ -484,6 +489,11 @@ def fit_acf_ts(acf,
     xhat=bx
         
     dx0=0.05*xhat[0]
+    # the table ends at Te/Ti=ilf_ho.te_ti_ratio1 and clamps beyond it, so from
+    # a fit on that bound a forward step changes nothing, the Jacobian loses
+    # its Te/Ti column and Sigma cannot be inverted. step backwards there.
+    if xhat[0]+dx0 > ilf_ho.te_ti_ratio1:
+        dx0=-dx0
     dx1=0.05*xhat[1]
     dx2=0.05*n.abs(xhat[2])
     dx3=0.05*xhat[3]
@@ -491,7 +501,10 @@ def fit_acf_ts(acf,
     n_m=len(midx)
     J=n.zeros([2*n_m,4])
     
-    ofrac=xhat[4]
+    # the fit's fifth parameter is x[4], and the O+ fraction is 1-1/x[4], as
+    # in ss above. the model and Jacobian below need the fraction, not x[4]
+    # (2..10000), which the table would clamp to pure O+
+    ofrac=1-1/xhat[4]
     
     model=xhat[3]*model_acf(xhat[0]*xhat[1],xhat[1],ofrac,xhat[2],lags[midx],hplus=True)
 
@@ -545,7 +558,7 @@ def fit_acf_ts(acf,
         plt.ylabel(r"Autocorrelation function R($\tau)$")
         plt.title(r"%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\pm$%1.0f (m/s) $\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],ofrac))
         plt.show()
-    return(xhat[0:4],model,sigmas,Sigma)
+    return(xhat[0:4],model,sigmas,Sigma,ofrac)
 
 
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
@@ -823,6 +836,8 @@ def fit_lpifiles(dirn="lpi_f",
         covs=[]
         ne_consts=[]
         dtes=[]
+        # O+ fraction fitted in the topside (O+/H+), NaN below
+        o_fracs=[]
         model_acfs=n.copy(acf0)
         model_acfs[:,:]=n.nan
         
@@ -845,8 +860,9 @@ def fit_lpifiles(dirn="lpi_f",
             try:
                 if (n.sum(n.isnan(acf[ri,first_lag:n_lags]))/(n_lags-first_lag) < 0.8):
                     if hgt>700:
-                        res,model_acf,dres,cov=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
+                        res,model_acf,dres,cov,o_frac=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
                     else:
+                        o_frac=n.nan
                         res,model_acf,dres,cov=fit_acf(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
                         
                     model_acfs[ri,first_lag:n_lags]=model_acf/model_acf[0].real
@@ -856,6 +872,7 @@ def fit_lpifiles(dirn="lpi_f",
                     res=n.array([n.nan,n.nan,n.nan,n.nan])
                     dres=n.array([n.nan,n.nan,n.nan,n.nan])                    
                     cov=n.full((4,4),n.nan)
+                    o_frac=n.nan
                 # ne raw
                 res_out=n.copy(res)
                 dres_out=n.copy(dres)                
@@ -876,12 +893,14 @@ def fit_lpifiles(dirn="lpi_f",
                 pp.append(res_out)
                 dpp.append(dres_out)                
                 dtes.append(dte)
+                o_fracs.append(o_frac)
                 covs.append(cov)
                 ne_consts.append(ne_const)
             except:
                 pp.append([n.nan,n.nan,n.nan,n.nan])
                 dpp.append([n.nan,n.nan,n.nan,n.nan])
                 dtes.append(n.nan)
+                o_fracs.append(n.nan)
                 covs.append(n.full((4,4),n.nan))
                 ne_consts.append(n.nan)
                 traceback.print_exc()
@@ -938,6 +957,10 @@ def fit_lpifiles(dirn="lpi_f",
         ho["dTi"]=dpp[:,1]
         ho["dvi"]=dpp[:,2]
         ho["dne"]=dpp[:,3]
+        # O+ fraction of the O+/H+ fit above 700 km, NaN where the fixed
+        # molecular ion profile is used. no uncertainty: the covariance
+        # covers the first four parameters only
+        ho["O_frac"]=n.array(o_fracs)
 
         # full covariance of the fitted parameters, per range gate, in the
         # parameter order given by Sigma_params. the fit solves for zero-lag
