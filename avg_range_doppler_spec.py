@@ -177,6 +177,9 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                               output_base=None,
                               max_time_s=None,
                               tx_delay_us=None,
+                              # indices of the integration periods to analyse,
+                              # None for all (shared out over the MPI ranks)
+                              periods=None,
                               ):
     if output_base is None:
         output_base = dirname
@@ -246,7 +249,7 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
     gc=tmm[mode]["gc"]
 
     # go through one integration window
-    for ai in range(rank,n_times,size):
+    for ai in (range(rank,n_times,size) if periods is None else periods):
         i0 = ai*int(step*idsr) + idb[0]
         print(stuffr.unix2datestr(i0/1e6))
         
