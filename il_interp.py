@@ -166,6 +166,68 @@ class ilint:
         
 
 
+    def corner_weights(self,i,ne,ne_idxl,ne_idxh,mol_frac_idx,te_ti_ratio_idx,ti_idx,debug=False):
+        """
+        Multilinear interpolation weights of the 16 table entries surrounding
+        parameter point i in (ne, ion fraction, te/ti, ti).
+
+        The axis weights are w00,w01 (ion fraction floor,ceil), w10,w11
+        (te/ti), w20,w21 (ti) and w30,w31 (ne low,high). The weight of a
+        corner is the product of one weight from each axis. The corner
+        weights are kept apart from the axis weights (c0..c15), so that
+        computing one corner never changes the weights of the next.
+
+        Returns the table indices of the corners, shape (16,4) in the order
+        (ne, ion fraction, te/ti, ti), and the 16 corner weights. Corner k is
+        the binary number (ne,frac,te/ti,ti), 0=floor/low, 1=ceil/high.
+        """
+        w00=1.0-(mol_frac_idx[i]-n.floor(mol_frac_idx[i]))  # how close to floor [0,1]
+        w01=1.0-(n.ceil(mol_frac_idx[i])-mol_frac_idx[i])   # how close to ceil
+
+        w10=1.0-(te_ti_ratio_idx[i]-n.floor(te_ti_ratio_idx[i]))
+        w11=1.0-(n.ceil(te_ti_ratio_idx[i])-te_ti_ratio_idx[i])
+
+        w20=1.0-(ti_idx[i]-n.floor(ti_idx[i]))
+        w21=1.0-(n.ceil(ti_idx[i])-ti_idx[i])
+
+        if ne[i]<self.ne[ne_idxl[i]]:
+            w30=1.0
+            w31=0.0
+        elif ne[i]>self.ne[ne_idxh[i]]:
+            w30=0.0
+            w31=1.0
+        elif self.ne[ne_idxh[i]]==self.ne[ne_idxl[i]]:
+            w30=0.0
+            w31=1.0
+        else:
+            w30=(1-((ne[i]-self.ne[ne_idxl[i]])/(self.ne[ne_idxh[i]]-self.ne[ne_idxl[i]])))
+            w31=(1-((self.ne[ne_idxh[i]]-ne[i])/(self.ne[ne_idxh[i]]-self.ne[ne_idxl[i]])))
+
+        if debug:
+            print("weights %1.2f,%1.2f-%d,%d %1.2f,%1.2f-%d,%d %1.2f,%1.2f - %d,%d"%(w00,w01,n.floor(mol_frac_idx[i]),n.ceil(mol_frac_idx[i]),
+                                                                                     w10,w11,n.floor(te_ti_ratio_idx[i]),n.ceil(te_ti_ratio_idx[i]),
+                                                                                     w20,w21,n.floor(ti_idx[i]),n.ceil(ti_idx[i])))
+
+        ne_i=[ne_idxl[i],ne_idxh[i]]
+        fr_i=[int(n.floor(mol_frac_idx[i])),int(n.ceil(mol_frac_idx[i]))]
+        teti_i=[int(n.floor(te_ti_ratio_idx[i])),int(n.ceil(te_ti_ratio_idx[i]))]
+        ti_i=[int(n.floor(ti_idx[i])),int(n.ceil(ti_idx[i]))]
+        wne=[w30,w31]
+        wfr=[w00,w01]
+        wteti=[w10,w11]
+        wti=[w20,w21]
+
+        idx=n.zeros([16,4],dtype=int)
+        c=n.zeros(16)
+        for k in range(16):
+            a=(k>>3)&1  # ne
+            b=(k>>2)&1  # ion fraction
+            d=(k>>1)&1  # te/ti
+            e=k&1       # ti
+            idx[k,:]=[ne_i[a],fr_i[b],teti_i[d],ti_i[e]]
+            c[k]=wne[a]*wfr[b]*wteti[d]*wti[e]
+        return(idx,c)
+
     def getspec(self,
                 ne=n.array([1e11]),
                 te=n.array([600]),
@@ -222,7 +284,7 @@ class ilint:
         pwr_scaling_factor=ne/((1+alpha2)*(1+alpha2+te/ti))
         
         # and now linearly interpolate this thing.
-        # there are three dimensions, so we need to look at eight corners
+        # there are four dimensions, so we need to look at sixteen corners
 
         # set lookup table to interpolate
         if acf:
@@ -234,98 +296,10 @@ class ilint:
 
         # for all parameter quadruplets
         for i in range(len(ne)):
-            w00=1.0-(mol_frac_idx[i]-n.floor(mol_frac_idx[i]))  # how close to floor [0,1]
-            w01=1.0-(n.ceil(mol_frac_idx[i])-mol_frac_idx[i])   # how close to ceil
+            idx,c=self.corner_weights(i,ne,ne_idxl,ne_idxh,mol_frac_idx,te_ti_ratio_idx,ti_idx,debug=debug)
+            S[i,:]=n.dot(c,L[idx[:,0],idx[:,1],idx[:,2],idx[:,3],:])
+            S[i,:]=S[i,:]/n.sum(c)
 
-            w10=1.0-(te_ti_ratio_idx[i]-n.floor(te_ti_ratio_idx[i]))
-            w11=1.0-(n.ceil(te_ti_ratio_idx[i])-te_ti_ratio_idx[i])
-
-            w20=1.0-(ti_idx[i]-n.floor(ti_idx[i]))
-            w21=1.0-(n.ceil(ti_idx[i])-ti_idx[i])
-
-            w30=(1-((ne[i]-self.ne[ne_idxl[i]])/(self.ne[ne_idxh[i]]-self.ne[ne_idxl[i]])))
-            w31=(1-((self.ne[ne_idxh[i]]-ne[i])/(self.ne[ne_idxh[i]]-self.ne[ne_idxl[i]])))
-            if ne[i]<self.ne[ne_idxl[i]]:
-                w30=1.0
-                w31=0.0
-            elif ne[i]>self.ne[ne_idxh[i]]:
-                w30=0.0
-                w31=1.0
-            elif self.ne[ne_idxh[i]]==self.ne[ne_idxl[i]]:
-                w30=0.0
-                w31=1.0
-
-            if debug:
-                print("weights %1.2f,%1.2f-%d,%d %1.2f,%1.2f-%d,%d %1.2f,%1.2f - %d,%d"%(w00,w01,n.floor(mol_frac_idx[i]),n.ceil(mol_frac_idx[i]),
-                                                                                         w10,w11,n.floor(te_ti_ratio_idx[i]),n.ceil(te_ti_ratio_idx[i]),
-                                                                                         w20,w21,n.floor(ti_idx[i]),n.ceil(ti_idx[i])))
-            # 0000
-            w0=w30*w00*w10*w20
-            S[i,:] += w0*L[ne_idxl[i],int(n.floor(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 0001
-            w1=w30*w00*w10*w21
-            S[i,:] += w1*L[ne_idxl[i],int(n.floor(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-
-            # 0010
-            w2=w30*w00*w11*w20
-            S[i,:] += w2*L[ne_idxl[i],int(n.floor(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 0011
-            w3=w30*w00*w11*w21
-            S[i,:] += w3*L[ne_idxl[i],int(n.floor(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-            
-            # 0100
-            w4=w30*w01*w10*w20
-            S[i,:] += w4*L[ne_idxl[i],int(n.ceil(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 0101
-            w5=w30*w01*w10*w21
-            S[i,:] += w5*L[ne_idxl[i],int(n.ceil(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-
-            # 0110
-            w6=w30*w01*w11*w20
-            S[i,:] += w6*L[ne_idxl[i],int(n.ceil(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-            
-            # 0111
-            w7=w30*w01*w11*w21
-            S[i,:] += w7*L[ne_idxh[i],int(n.ceil(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-            
-
-            # 1000
-            w8=w31*w00*w10*w20
-            S[i,:] += w8*L[ne_idxh[i],int(n.floor(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 1001
-            w9=w31*w00*w10*w21
-            S[i,:] += w9*L[ne_idxh[i],int(n.floor(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-
-            # 1010
-            w10=w31*w00*w11*w20
-            S[i,:] += w10*L[ne_idxh[i],int(n.floor(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 1011
-            w11=w31*w00*w11*w21
-            S[i,:] += w11*L[ne_idxh[i],int(n.floor(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-            
-            # 1100
-            w12=w31*w01*w10*w20
-            S[i,:] += w12*L[ne_idxh[i],int(n.ceil(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-
-            # 1101
-            w13=w31*w01*w10*w21
-            S[i,:] += w13*L[ne_idxh[i],int(n.ceil(mol_frac_idx[i])), int(n.floor(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-
-            # 1110
-            w14=w31*w01*w11*w20
-            S[i,:] += w14*L[ne_idxh[i],int(n.ceil(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.floor(ti_idx[i])), :]
-            
-            # 1111
-            w15=w31*w01*w11*w21
-            S[i,:] += w15*L[ne_idxh[i],int(n.ceil(mol_frac_idx[i])), int(n.ceil(te_ti_ratio_idx[i])), int(n.ceil(ti_idx[i])), :]
-            
-            S[i,:]=S[i,:]/(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11+w12+w13+w14+w15)
-            
             if normalize:
                 if acf:
                     S[i,:]=S[i,:]/S[i,0].real
