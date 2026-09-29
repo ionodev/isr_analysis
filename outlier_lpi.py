@@ -184,6 +184,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # reproduces the output of the code before this option, which
               # differs only at roundoff level when no bright echo is present.
               precise_weights=True,
+              # how the DC offset is removed before the noise injection
+              # calibration: "period" estimates it once from all the pulses of
+              # the integration period; "window" subtracts each pulse's own
+              # background window mean, which biased T_sys and alpha low by a
+              # signal dependent factor (memo 7) and reproduces the earlier
+              # output exactly.
+              noise_dc="period",
               # reject lagged products by the ratio test and the local power
               # cut below. Off when satellite echoes are to be modelled, as
               # those tests reject the very products the columns explain.
@@ -463,11 +470,17 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             z_noise=n.copy(z_echo)
             z_noise=lpf.lpf(z_noise)
 
-            # the dc offset changes
+            # the dc offset changes. The mean of this pulse's background window
+            # is kept, together with the mean power and mean of each window, so
+            # the offset can be removed after the loop using all the pulses.
             z_dc_noise=n.mean(z_noise[(last_echo-500):last_echo])
             z_dc_samples.append(z_dc_noise)
-            bg_samples.append( n.mean(n.abs(z_noise[(last_echo-500):last_echo]-z_dc_noise)**2.0) )
-            bg_plus_inj_samples.append( n.mean(n.abs(z_noise[(noise0):noise1]-z_dc_noise)**2.0) )
+            if noise_dc == "window":
+                bg_samples.append( n.mean(n.abs(z_noise[(last_echo-500):last_echo]-z_dc_noise)**2.0) )
+                bg_plus_inj_samples.append( n.mean(n.abs(z_noise[(noise0):noise1]-z_dc_noise)**2.0) )
+            else:
+                bg_samples.append( (n.mean(n.abs(z_noise[(last_echo-500):last_echo])**2.0), z_dc_noise) )
+                bg_plus_inj_samples.append( (n.mean(n.abs(z_noise[(noise0):noise1])**2.0), n.mean(z_noise[(noise0):noise1])) )
 
             z_tx[0:tx0]=0.0
             z_tx[tx1:10000]=0.0
@@ -612,8 +625,21 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         acfs_var=n.zeros([rmax,n_lags],dtype=n.float32)
         acfs_var[:,:]=n.nan
 
-        noise=n.median(bg_samples)    
-        alpha=(n.median(bg_plus_inj_samples)-n.median(bg_samples))/T_injection 
+        if noise_dc != "window" and len(z_dc_samples) > 0:
+            # one DC offset for the period, the median over all its pulses of the
+            # background window mean. A single window's mean is an estimate from
+            # only N = 2*1.2*pass_band*500 us independent samples, 21.6 at 18 kHz,
+            # and subtracting it per pulse biased T_sys low (memo 7): it removed
+            # 1/N of the background power and added P_bg/N to the injection
+            # window. Estimated over the period the error is negligible. Each
+            # window's power about it follows from its mean power and mean,
+            # mean|x-d|^2 = mean|x|^2 - 2 Re(d* mean x) + |d|^2.
+            z_dc_period=n.median(n.real(z_dc_samples))+1j*n.median(n.imag(z_dc_samples))
+            about_dc=lambda s: s[0]-2.0*n.real(n.conj(z_dc_period)*s[1])+n.abs(z_dc_period)**2.0
+            bg_samples=[about_dc(s) for s in bg_samples]
+            bg_plus_inj_samples=[about_dc(s) for s in bg_plus_inj_samples]
+        noise=n.median(bg_samples)
+        alpha=(n.median(bg_plus_inj_samples)-n.median(bg_samples))/T_injection
         T_sys=noise/alpha
 
         for li in range(n_lags):
@@ -882,6 +908,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             ho["alpha"]=alpha     # This can scale power to T_sys (e.g., noise_power = T_sys/alpha)   T_sys * power/noise_pwr = T_pwr
             #
             ho["z_dc"]=n.median(z_dc_samples)
+            if noise_dc != "window":
+                # how the DC offset was removed for T_sys and alpha
+                ho["noise_dc"]=noise_dc
             ho["pass_band"]=pass_band        # sort of important to store this, as this defines the low pass filter  
             ho["filter_len"]=filter_len      #
             # keep track of how many lagged products are rejected as bad as a function of time delay
