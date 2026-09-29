@@ -454,7 +454,9 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
                         # take a bit extra after
                         for j in range(n_avg0*2):
                             if (i+j) < RDS_LP.shape[0]:
-                                RDS_LP[i+j,(n.max([0,bi-16])):(n.min([n_rg-1,bi+16])),:]=n.nan
+                                # the slice end is exclusive: clamp it to n_rg, not n_rg-1,
+                                # or the last range gate is never blanked (memo 20)
+                                RDS_LP[i+j,(n.max([0,bi-16])):(n.min([n_rg,bi+16])),:]=n.nan
 
                 RDS_LP=n.nanmean(RDS_LP[0:lp_idx,:,:],axis=0)
 
