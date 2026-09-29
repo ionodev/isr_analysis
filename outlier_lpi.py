@@ -28,6 +28,7 @@ from radar_timing import TMM as tmm, T_INJECTION as T_injection
 # design matrix columns for detected satellite echoes
 import satellite_columns as satcol
 from raw_reader import RawReader
+from impulse_blanking import BlankingReader
 
 comm=MPI.COMM_WORLD
 size=comm.Get_size()
@@ -202,6 +203,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # second of data, instead of digital_rf's several small reads per
               # pulse. The samples are identical; False uses DigitalRFReader.
               fast_read=True,
+              # set impulsive interference (power-line sparks, memo 21) to zero
+              # in the raw voltage before the inversion: impulse_blanking.
+              # BlankingReader. False leaves the samples as recorded.
+              blank_impulses=False,
               ):
     if output_base is None:
         output_base = dirname
@@ -211,6 +216,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         
     id_read = DigitalMetadataReader("%s/metadata/id_metadata"%(dirname))
     d_il = RawReader("%s/rf_data/"%(dirname)) if fast_read else DigitalRFReader("%s/rf_data/"%(dirname))
+    # the reader as recorded, for the calibration windows (impulse_blanking)
+    d_raw = d_il
+    if blank_impulses:
+        d_il = BlankingReader(d_il, dirname)
 
     zpm,mpm=mrs.get_tx_power_model("%s/metadata/powermeter"%(dirname))
     tx_ant,rx_ant=mrs.get_antenna_select("%s/metadata/antenna_control_metadata"%(dirname))    
@@ -472,7 +481,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
 
             # filter noise injection.
-            z_noise=n.copy(z_echo)
+            if blank_impulses:
+                # the calibration takes its windows as recorded: blanking
+                # cannot treat the background and the brighter injection
+                # window alike, and impulses left in both cancel in alpha
+                z_noise=d_raw.read_vector_1d(key, 10000, channel).astype("c8", casting="unsafe", copy=False) - z_dc
+            else:
+                z_noise=n.copy(z_echo)
             z_noise=lpf.lpf(z_noise)
 
             # the dc offset changes. The mean of this pulse's background window
