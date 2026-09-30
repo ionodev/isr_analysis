@@ -3,6 +3,7 @@ import numpy as np
 
 from single_pulse_satellite_cfar import (
     FFTBank,
+    MODES,
     Mode,
     ambiguity_power,
     cfar_peaks,
@@ -14,7 +15,7 @@ from single_pulse_satellite_cfar import (
 def test_two_nonoverlapping_echoes():
     rng = np.random.default_rng(20260914)
     length = 64
-    mode = Mode(tx0=10, tx1=10 + length, clutter_end=100, noise0=900, noise1=980)
+    mode = Mode(tx0=10, tx1=10 + length, clutter_end=100, noise0=900, noise1=980, last_echo=880)
     template = (
         rng.choice(np.asarray([-1, 1], dtype=np.float32), length)
         + 1j * rng.choice(np.asarray([-1, 1], dtype=np.float32), length)
@@ -56,7 +57,7 @@ def test_integrate_and_decimate_preserves_alignment_and_complex64():
 
 
 def test_decimation_geometry_and_range_mapping():
-    mode = Mode(tx0=76, tx1=645, clutter_end=1000, noise0=7800, noise1=8371)
+    mode = Mode(tx0=76, tx1=645, clutter_end=1000, noise0=7800, noise1=8371, last_echo=7700)
     offset, length, search_start, search_stop = decimation_geometry(mode, factor=8)
     assert offset == 4
     assert length == 71
@@ -118,3 +119,12 @@ def test_decimated_ambiguity_recovers_range_and_doppler():
     for (got_gate, got_doppler), (want_gate, want_doppler) in zip(got, expected):
         assert abs(got_gate - want_gate) <= 1
         assert abs(got_doppler - want_doppler) < 1_000
+
+
+def test_noise_window_ends_before_the_noise_diode():
+    # The diode switches on at about 8294 (coded modes), 7814 (mode 300) and
+    # 30113 (mode 800) samples into the pulse (memo 27).  The catalogue's
+    # noise estimate has to end before that, or it is about 1.3 (coded) and
+    # 1.17 (mode 800) times too high (memo 28).
+    for sweep, switch_on in [(1, 8294), (32, 8294), (300, 7814), (800, 30113)]:
+        assert MODES[sweep].last_echo <= switch_on - 5
