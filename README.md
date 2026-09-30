@@ -1,4 +1,4 @@
-# ISR analysis: Millstone Hill and the 2024 eclipse
+# ISR analysis
 
 This repository turns raw incoherent scatter radar (ISR) recordings from the
 Millstone Hill observatory (Massachusetts, USA) into profiles of the
@@ -8,7 +8,7 @@ velocity against altitude and time. The main dataset is a 49-hour recording,
 
 It is a fork of Juha Vierinen's
 [isr_analysis](https://github.com/jvierine/isr_analysis), extended in a
-student project (FYS-3730, UiT The Arctic University of Norway).
+student project.
 
 ![Lag-profile inversion example](figs/lpi_example_2023-09-05.png)
 
