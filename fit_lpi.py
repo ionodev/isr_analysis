@@ -562,6 +562,24 @@ def fit_acf_ts(acf,
 
 
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
+def _corr_factor(w,var,rho):
+    """
+    Var(sum w x)/Var(sum w x | independent) for gates with weights w, variances
+    var ([gate, lag]) and correlation rho[gate, lag, k-1] between a gate and
+    the one k above.  NaN gates drop out.  Clipped at 0.05 against a
+    non-positive estimate.
+    """
+    ok=n.isfinite(var)&n.isfinite(w)
+    s=n.where(ok,n.sqrt(n.where(ok,var,0.0))*w,0.0)
+    ind=n.sum(s**2,axis=0)
+    cor=n.copy(ind)
+    for k in range(1,min(rho.shape[2],s.shape[0]-1)+1):
+        r=n.where(n.isfinite(rho[:-k,:,k-1]),rho[:-k,:,k-1],0.0)
+        cor+=2*n.sum(s[:-k,:]*s[k:,:]*r,axis=0)
+    f=n.where(ind>0,cor/n.where(ind>0,ind,1.0),1.0)
+    return n.clip(f,0.05,None)
+
+
 def fit_lpifiles(dirn="lpi_f",
                  channel="misa-l",
                  postfix="_30",
@@ -577,7 +595,19 @@ def fit_lpifiles(dirn="lpi_f",
                  first_lag=0,
                  output_base=None,
                  radar_freq_hz=440.2e6,
-                 table_dir=None):
+                 table_dir=None,
+                 range_avg_rho=None):
+    """
+    range_avg_rho: how the range average's variance treats the correlation
+    between neighbouring gates (memo 31).  None: as independent (the variance
+    rule 1/sum(1/var), as before).  A sequence (rho_1, rho_2, ...): a measured
+    correlation between gates 1, 2, ... apart, the same at every gate and lag.
+    "lpi": the correlation the inversion implies, acfs_rho of the LPI files
+    (outlier_lpi.lpi_files with store_gate_correlation=True), averaged over
+    the files of the fit with their weights.  In both cases the variance is
+    that of the independent rule times the ratio of the correlated to the
+    independent variance of the r^2-weighted average over the same gates.
+    """
 
 #    if zpm == None:
  #       def zpm(t):
@@ -664,6 +694,8 @@ def fit_lpifiles(dirn="lpi_f",
         space_object_count=n.zeros(n_rg,dtype=int)
 
         n_avged=0
+        rho_sum=n.zeros([n_rg,n_l,3])
+        rho_w=n.zeros([n_rg,n_l,3])
 
         mean_az=0.0
         mean_el=0.0        
@@ -766,6 +798,13 @@ def fit_lpifiles(dirn="lpi_f",
             
             acfs[ai,:,:]=a/v
             wgts[ai,:,:]=1/v
+            if isinstance(range_avg_rho,str) and range_avg_rho=="lpi":
+                if "acfs_rho" not in h:
+                    raise ValueError("range_avg_rho='lpi' needs LPI files with acfs_rho (store_gate_correlation)")
+                rw=n.where(n.isfinite(v),1/v,0.0)[:,:,None]
+                rh=h["acfs_rho"][()]
+                rho_sum+=n.where(n.isfinite(rh),rh,0.0)*rw
+                rho_w+=n.where(n.isfinite(rh),rw,0.0)
             h.close()
 
         tsys=tsys/n_avged
@@ -802,6 +841,12 @@ def fit_lpifiles(dirn="lpi_f",
 
             acf_orig=n.copy(acf)
             var_orig=n.copy(var)
+            rho=None
+            if isinstance(range_avg_rho,str):
+                rho=n.where(rho_w>0,rho_sum/n.where(rho_w>0,rho_w,1.0),0.0)
+            elif range_avg_rho is not None:
+                rho=n.zeros([n_rg,n_l,len(range_avg_rho)])
+                rho[:,:,:]=n.array(range_avg_rho,dtype=float)[None,None,:]
             range_weight=n.copy(acf)
             range_weight[:,:]=0.0
             for ri in range(len(rgs)):
@@ -820,6 +865,8 @@ def fit_lpifiles(dirn="lpi_f",
                         r0,r1=n.max((0,(ri-ra))),n.min((acf.shape[0],(ri+ra+1)))
                         avg_acf[ri,:]=n.nansum(range_weight[r0:r1,:]*acf_orig[r0:r1,:],axis=0)/n.nansum(range_weight[r0:r1,:],axis=0)
                         avg_var[ri,:]=1/(n.nansum(1/var_orig[r0:r1,:],axis=0))
+                        if rho is not None:
+                            avg_var[ri,:]*=_corr_factor(range_weight[r0:r1,:],var_orig[r0:r1,:],rho[r0:r1,:,:])
 
                 acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]
                 var[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_var[range_limit_idx[rai]:range_limit_idx[rai+1],:]

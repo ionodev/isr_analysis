@@ -207,6 +207,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # in the raw voltage before the inversion: impulse_blanking.
               # BlankingReader. False leaves the samples as recorded.
               blank_impulses=False,
+              # also store acfs_rho[gate, lag, k-1], the correlation of the
+              # estimate at a gate with the one k = 1..3 gates above, from the
+              # error covariance: fit_lpi can then take the range average's
+              # variance with the correlation (memo 31). Off by default, so a
+              # default run writes the same file as before.
+              store_gate_correlation=False,
               ):
     if output_base is None:
         output_base = dirname
@@ -653,6 +659,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         acfs_e[:,:]=n.nan    
 
         acfs_var=n.zeros([rmax,n_lags],dtype=n.float32)
+        if store_gate_correlation:
+            acfs_rho=n.full([rmax,n_lags,3],n.nan,dtype=n.float32)
         acfs_var[:,:]=n.nan
 
         if noise_dc != "window" and len(z_dc_samples) > 0:
@@ -891,6 +899,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 noise_g[li]=xhat_g[n_pl]
 
                 acfs_var[ rmins[li]:rmax, li ] = n.diag(Sigma.real)[0:n_pl]
+                if store_gate_correlation:
+                    sd=n.sqrt(n.diag(Sigma.real)[0:n_pl])
+                    for k in range(1,4):
+                        if n_pl>k:
+                            acfs_rho[rmins[li]:(rmax-k),li,k-1]=n.real(n.diag(Sigma[0:n_pl,0:n_pl],k))/(sd[:-k]*sd[k:])
                 if n_sat > 0:
                     sat_amp_e[:,li]=xhat_e[(n_pl+1):]
                     sat_amp_g[:,li]=xhat_g[(n_pl+1):]
@@ -923,6 +936,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             ho["noise_e"]=noise_e     # store estimated noise ACF
             ho["noise_g"]=noise_g     # store estimated noise ACF   
             ho["acfs_var"]=acfs_var   # variance of the acf estimate
+            if store_gate_correlation:
+                ho["acfs_rho"]=acfs_rho   # correlation with the gates 1, 2, 3 above
             ho["rgs_km"]=rgs_km[0:rmax]
             ho["channel"]=channel
             ho["P_tx"]=avg_pwr/avg_pwr_n
