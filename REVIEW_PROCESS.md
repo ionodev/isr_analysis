@@ -39,7 +39,10 @@ someone has to confirm that it does.
 
 ## 2. Gate A: output-neutral changes
 
-1. **Tests.** `python3 -m pytest -q` passes. New code comes with unit tests
+1. **Tests.** `python3 -m pytest -q` passes, with nothing skipped. A fresh
+   worktree has no interpolation tables, so link them in first:
+   `ln -s ~/isr_project/isr_analysis/data/ion_line_interpolate_*.h5 data/`
+   (remove the links afterwards). New code comes with unit tests
    (`test_*.py`) where it can be tested without the raw data.
 2. **Benchmark**, whenever `git diff --name-only main...<branch>` lists a
    `.py` file other than `test_*.py` and the files under `review/`. First
@@ -146,9 +149,10 @@ Exit status:
   either side, nothing was compared, the branch does not contain `main`, or
   the tool failed. The logs are under the run directory.
 
-One commit takes about 19 minutes with 16 jobs (measured on 2026-09-30:
-1129 s for `main`, 1113 s for a branch), so a review with a fresh `main`
-takes about 40 minutes, and about 20 when `main`'s outputs are cached.
+One commit takes 19 to 33 minutes with 16 jobs, depending on what else is
+running (measured on 2026-09-30: 1113 to 1986 s). A review with a fresh `main`
+therefore takes 40 to 60 minutes, and about half that when `main`'s outputs
+are cached.
 
 Add a period to the benchmark when a new problem is found. This changes the
 key, so every commit is run afresh.
