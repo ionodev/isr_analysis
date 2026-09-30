@@ -45,3 +45,18 @@ def test_nan_gate_drops_out():
     f = fit_lpi._corr_factor(np.ones((5, 1)), v, rho)[0]
     # gates 0-1 and 3-4 are the only neighbour pairs left: (4 - 2*0.3*... ) / 4
     assert np.isclose(f, (4 + 2 * 2 * (-0.3)) / 4)
+
+
+def test_complex_typed_weights_as_in_fit_lpifiles():
+    # range_weight in fit_lpifiles is a complex array holding r^2
+    M = 6
+    w = (np.arange(M) + 100.0)[:, None] ** 2
+    rho = np.zeros((M, 1, 3))
+    rho[:, :, 0] = -0.3
+    v = np.ones((M, 1))
+    f_real = fit_lpi._corr_factor(w, v, rho)
+    f_cplx = fit_lpi._corr_factor(w.astype(np.complex64), v.astype(np.float32), rho)
+    assert f_cplx.dtype.kind == "f"
+    assert np.allclose(f_real, f_cplx, rtol=1e-6)
+    avg_var = np.ones((1,), dtype=np.float64)
+    avg_var *= f_cplx   # as fit_lpifiles applies it: must not raise

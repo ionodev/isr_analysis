@@ -569,6 +569,10 @@ def _corr_factor(w,var,rho):
     the one k above.  NaN gates drop out.  Clipped at 0.05 against a
     non-positive estimate.
     """
+    # fit_lpifiles's range weights are a copy of the (complex) ACF array
+    # holding r^2: take them, and the variances, as real
+    w=n.real(w)
+    var=n.real(var)
     ok=n.isfinite(var)&n.isfinite(w)
     s=n.where(ok,n.sqrt(n.where(ok,var,0.0))*w,0.0)
     ind=n.sum(s**2,axis=0)
