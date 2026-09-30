@@ -1,0 +1,29 @@
+{
+  "description": "Fixed regression benchmark for REVIEW_PROCESS.md. Periods are integration-period indices (10 s each from the first pulse of the eclipse2024 recording; 10800 = 2024-04-08 16:00:00 UTC). Each was chosen because an earlier memo found something at it.",
+  "data": "/mnt/data/juha/millstone_hill/isr/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000",
+  "table_dir": "/home/henrik/isr_project/isr_analysis/data",
+  "lpi": {
+    "zenith-l": {
+      "10812": "quiet, inside a zenith cycle (8 Apr 16:02)",
+      "10830": "cycle change, about a quarter wrong-antenna pulses (Memo 30)",
+      "11008": "made only of wrong-antenna pulses (Memo 30)",
+      "10471": "power-line impulses (Memo 21)",
+      "3070": "long bright Starlink pass (Memo 16)",
+      "1471": "quiet night (Memo 21)"
+    },
+    "misa-l": {
+      "10875": "lags lost to the clutter gates with outlier rejection (Memo 29)",
+      "10890": "cycle change, wrong-antenna pulses (Memo 30)",
+      "13531": "power-line impulses (Memo 21)",
+      "2": "start of the recording, lost lags (TODO item 17)"
+    }
+  },
+  "fit_lpi": {
+    "zenith-l": [10920, 10949],
+    "misa-l": [10920, 10949]
+  },
+  "range_doppler_300": {
+    "zenith-l": [10812],
+    "misa-l": [10875]
+  }
+}
