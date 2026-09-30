@@ -251,8 +251,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         mean_lags[i]=n.mean(lags[i:(i+lag_avg)])
 
     # maximum number of microseconds of delay, which we analyze
-    # this is experiment specific. need to read from configuration eventually
-    
+    # this is experiment specific; lpi_files takes it as an argument, and
+    # run_analysis.py from the configuration (max_range_delay_us)
     n_rg=int(n.floor(maximum_range_delay/rg))
     rgs=n.arange(n_rg)*rg
     rmax=n_rg
@@ -377,6 +377,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         # pulse codes seen in this integration period that the timing table
         # does not cover, and how many pulses each cost us
         unknown_codes={}
+        long_codes={}
 
         # start at 3, because we may need to look back for GC
         for keyi in range(3,n_pulses-3):
@@ -409,6 +410,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # the timing table does not know would otherwise print one line
                 # per pulse, hundreds per integration period
                 unknown_codes[sid[key]] = unknown_codes.get(sid[key], 0) + 1
+                continue
+            if tmm[sid[key]]["read_length"] > 10000:
+                # the inversion reads 10000 samples per pulse; a mode whose echo
+                # window reaches further (MISA's low elevation mode 800, to 30000
+                # us) belongs to avg_range_doppler_spec.py, and used to crash
+                # the period on an empty slice (memo 20)
+                long_codes[sid[key]] = long_codes.get(sid[key], 0) + 1
                 continue
 
             z_echo=None
@@ -611,6 +619,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
         for code in sorted(unknown_codes.keys()):
             print("pulse code %d is not in the timing table, skipped %d pulses"%(code,unknown_codes[code]))
+        for code in sorted(long_codes.keys()):
+            print("pulse code %d reads beyond the inversion's 10000 samples, skipped %d pulses"%(code,long_codes[code]))
 
         # append the satellite columns, now that their number is known. Each
         # column is nonzero only in the rows of its own pulse.
