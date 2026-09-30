@@ -60,3 +60,9 @@ def test_complex_typed_weights_as_in_fit_lpifiles():
     assert np.allclose(f_real, f_cplx, rtol=1e-6)
     avg_var = np.ones((1,), dtype=np.float64)
     avg_var *= f_cplx   # as fit_lpifiles applies it: must not raise
+
+
+def test_unknown_option_string_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        fit_lpi.fit_lpifiles(dirn="/nonexistent", range_avg_rho="LPI")

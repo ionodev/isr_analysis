@@ -621,6 +621,8 @@ def fit_lpifiles(dirn="lpi_f",
 
 
 
+    if isinstance(range_avg_rho,str) and range_avg_rho!="lpi":
+        raise ValueError("range_avg_rho must be None, a sequence of rho_k or 'lpi', not %r"%(range_avg_rho,))
     _init_tables(radar_freq_hz, table_dir=table_dir)
 
     use_misa=False
@@ -804,6 +806,7 @@ def fit_lpifiles(dirn="lpi_f",
             wgts[ai,:,:]=1/v
             if isinstance(range_avg_rho,str) and range_avg_rho=="lpi":
                 if "acfs_rho" not in h:
+                    h.close()
                     raise ValueError("range_avg_rho='lpi' needs LPI files with acfs_rho (store_gate_correlation)")
                 rw=n.where(n.isfinite(v),1/v,0.0)[:,:,None]
                 rh=h["acfs_rho"][()]
