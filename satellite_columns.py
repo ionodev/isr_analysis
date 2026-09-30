@@ -26,6 +26,7 @@ change with lag, which is the check that the echo was a coherent target.
 
     satellite_template()   the synthetic, filtered echo of one detection
     template_lag_column()  its decimated lagged product at one lag
+    refine_delay()         a catalogue delay refined below the catalogue's grid
     CatalogueDetections    detections from the single pulse catalogue
 """
 
@@ -111,6 +112,47 @@ def template_lag_column(s, lag, decim, m0, m1):
     return decim.decimate(s[0:(len(s) - lag)] * n.conj(s[lag:len(s)]))[m0:m1]
 
 
+def refine_delay(echo, tx, raw_delay, doppler_hz, tx0, tx1, search=12, sr=1e6):
+    """
+    Refine a catalogue delay below its grid of 8 samples.
+
+    The catalogue matched filters a copy of the echo summed over blocks of 8
+    samples, so its raw_delay_sample is on that grid, +- 4 samples of the true
+    delay. Here the full rate echo is matched filtered with the pulse's own
+    tx-h samples, with the catalogue's Doppler removed, at every integer delay
+    within +- search samples of the catalogue's, and a parabola through the
+    peak power and its two neighbours gives the sub-sample delay.
+
+    echo, tx     the pulse's samples on the echo channel and on tx-h, from the
+                 pulse start
+    raw_delay    the catalogue's raw_delay_sample: where in echo the copy of
+                 tx[tx0:tx1] starts
+    returns      (refined raw delay, float, in the catalogue's frame; peak
+                 matched filter power over the power at the catalogue's delay)
+    """
+    t = n.asarray(tx[tx0:tx1], dtype=n.complex128)
+    t = t - n.mean(tx[0:tx0])
+    L = len(t)
+    ramp = n.exp(-2j * n.pi * doppler_hz * n.arange(L) / sr)
+    w = n.conj(t) * ramp
+    s0 = max(0, int(raw_delay) - search)
+    s1 = min(len(echo) - L, int(raw_delay) + search)
+    shifts = n.arange(s0, s1 + 1)
+    if len(shifts) < 3:
+        return float(raw_delay), 1.0
+    seg = n.lib.stride_tricks.sliding_window_view(n.asarray(echo, dtype=n.complex128), L)[s0:s1 + 1]
+    p = n.abs(seg @ w)**2
+    k = int(n.argmax(p))
+    frac = 0.0
+    if 0 < k < len(p) - 1:
+        den = p[k - 1] - 2 * p[k] + p[k + 1]
+        if den < 0:
+            frac = float(n.clip(0.5 * (p[k - 1] - p[k + 1]) / den, -0.5, 0.5))
+    i_cat = int(raw_delay) - s0
+    gain = float(p[k] / p[i_cat]) if 0 <= i_cat < len(p) and p[i_cat] > 0 else 1.0
+    return float(shifts[k] + frac), gain
+
+
 class CatalogueDetections:
     """
     Echoes from the single pulse satellite catalogue
@@ -124,7 +166,9 @@ class CatalogueDetections:
     instead of the fixed one.
 
     The catalogue searches a grid decimated by eight, so its delays are known
-    to +- 4 samples, +- 0.6 km in range. Nothing here refines them.
+    to +- 4 samples, +- 0.6 km in range. Given a reader, each delay is refined
+    below that grid from the raw samples (refine_delay); without one, they are
+    used as the catalogue gives them.
 
     for_period() returns {pulse key: [(delay_samples, doppler_hz), ...]}, the
     form outlier_lpi.lpi_files() takes. The optional windows restrict it to one
@@ -133,8 +177,10 @@ class CatalogueDetections:
     """
 
     def __init__(self, metadata_dir, channel, channel_delay_samples,
-                 t_window=None, range_window=None, min_snr_db=None):
+                 t_window=None, range_window=None, min_snr_db=None, refine_reader=None):
         self.reader = DigitalMetadataReader(metadata_dir)
+        # an rf reader (read_vector_1d) to refine the delays with, or None
+        self.refine_reader = refine_reader
         self.channel = channel
         self.channel_delay_samples = float(channel_delay_samples)
         self.t_window = t_window
@@ -164,6 +210,22 @@ class CatalogueDetections:
                 if self.range_window is not None and not (
                         self.range_window[0] <= range_km <= self.range_window[1]):
                     continue
-                delay = float(raw) - tmm[int(sweep_id)]["tx0"] - self.channel_delay_samples
+                raw = float(raw)
+                if self.refine_reader is not None:
+                    raw = self.refine(int(key), int(sweep_id), raw, float(doppler_hz))
+                delay = raw - tmm[int(sweep_id)]["tx0"] - self.channel_delay_samples
                 out.setdefault(int(key), []).append((delay, float(doppler_hz)))
         return out
+
+    def refine(self, key, sweep_id, raw, doppler_hz):
+        m = tmm[sweep_id]
+        n_read = int(raw) + (m["tx1"] - m["tx0"]) + 32
+        try:
+            echo = self.reader_rf(key, n_read, self.channel)
+            tx = self.reader_rf(key, m["tx1"], "tx-h")
+        except Exception:
+            return raw
+        return refine_delay(echo, tx, raw, doppler_hz, m["tx0"], m["tx1"])[0]
+
+    def reader_rf(self, key, length, channel):
+        return self.refine_reader.read_vector_1d(key, length, channel)
