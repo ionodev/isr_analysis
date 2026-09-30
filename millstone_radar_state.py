@@ -51,16 +51,31 @@ def get_tx_power_model(dirn,plot=False):
     return(zenith_pwrf,misa_pwrf)
 
 
-def get_antenna_select(dirn,plot=False):
+# seconds before a cycle-end event from which the antenna is treated as
+# unknown when the next cycle uses the other antenna (memo 30)
+ANTENNA_SWITCH_GUARD_S=2.5
+
+def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     """
     Transmit and receive antenna selection as functions of time.
 
     1 = misa
     -1 = zenith
+    0 = unknown: around a change of antenna, see below
 
     Returns (tx_sel, rx_sel). Both are step functions of time in microseconds,
     holding the most recent switch, and holding the first and last value
     outside the recorded range.
+
+    The metadata change the antenna at the event that opens the next record
+    cycle, but the radar changes it at the event that closes the previous
+    one: in the eclipse2024 recording the first pulse on the new antenna comes
+    8.2-20.8 s before the metadata say so, after about 1.25 s without pulses
+    that starts up to 2 s before the closing event (memo 30).  So from
+    switch_guard_s seconds before the closing event until the opening event,
+    where the next cycle uses the other antenna, both functions return 0, and
+    tests like tx_ant(t)<=-0.99 reject those pulses.  switch_guard_s=None
+    gives the metadata as recorded.
     """
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)
@@ -71,6 +86,8 @@ def get_antenna_select(dirn,plot=False):
     rx_t=[]
     rx_v=[]
 
+    if switch_guard_s is not None:
+        names=dmd.read(b[0],b[1],"cycle_name")
     sid = dmd.read(b[0],b[1],"rx_antenna")    
     for keyi,key in enumerate(sid.keys()):
 
@@ -92,6 +109,9 @@ def get_antenna_select(dirn,plot=False):
             
     rx_t=n.array(rx_t)
     tx_t=n.array(tx_t)
+    if switch_guard_s is not None:
+        tx_t,tx_v=_unknown_at_switches(tx_t,tx_v,names,switch_guard_s)
+        rx_t,rx_v=_unknown_at_switches(rx_t,rx_v,names,switch_guard_s)
     rx_t0=n.copy(rx_t)
     tx_t0=n.copy(tx_t)    
     
@@ -125,6 +145,29 @@ def get_antenna_select(dirn,plot=False):
     # for the same value.
     return(tx_sel,rx_sel)
 
+
+
+def _unknown_at_switches(t,v,names,guard_s):
+    """
+    Value 0 from guard_s before each cycle-end event (an event with an empty
+    cycle name) until the next event, where that next event changes the
+    antenna.  t (microseconds) and v are one field's events, sorted; names
+    maps event times to cycle names.  Returns the new (t, v).
+    """
+    t=n.asarray(t,dtype=n.int64)
+    v=n.asarray(v,dtype=float)
+    def unnamed(k):
+        nm=names.get(k,b"")
+        return (nm.decode() if isinstance(nm,bytes) else str(nm))==""
+    sw=[i for i in range(1,len(t)) if v[i]!=v[i-1] and unnamed(t[i-1])]
+    v=n.copy(v)
+    v[[i-1 for i in sw]]=0.0
+    # the guard starts no earlier than the event before the closing one
+    g=[max(t[i-1]-int(guard_s*1e6),t[i-2]+1 if i>=2 else t[i-1]-int(guard_s*1e6)) for i in sw]
+    tt=n.concatenate([t,n.array(g,dtype=n.int64)])
+    vv=n.concatenate([v,n.zeros(len(g))])
+    o=n.argsort(tt,kind="stable")
+    return tt[o],list(vv[o])
 
 
 def get_misa_pointing(dirn):
