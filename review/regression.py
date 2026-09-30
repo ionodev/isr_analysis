@@ -177,6 +177,25 @@ def run_jobs(jobs, code, out, logdir, n_jobs):
     return failed
 
 
+def clean_stale():
+    """Remove run directories that never finished and are not in use, and
+    forget worktrees that no longer exist."""
+    git("worktree", "prune")
+    for d in glob.glob(os.path.join(ROOT, "runs", "*")):
+        if not os.path.isdir(d) or os.path.exists(os.path.join(d, "DONE")):
+            continue
+        with open(d + ".lock", "a") as lk:
+            try:
+                fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                continue                      # another run is using it
+            shutil.rmtree(d)
+            wt = os.path.join(ROOT, "worktrees", os.path.basename(d))
+            if os.path.isdir(wt):
+                subprocess.run(["git", "worktree", "remove", "--force", wt], cwd=REPO, capture_output=True)
+            fcntl.flock(lk, fcntl.LOCK_UN)
+
+
 def run_commit(sha, key, n_jobs):
     """Outputs of commit `sha` on the benchmark, cached under (sha, key)."""
     out = os.path.join(ROOT, "runs", "%s-%s" % (sha, key))
@@ -253,6 +272,8 @@ def identical(a, b):
     """Byte-for-byte equality, including dtype and shape."""
     if a.dtype != b.dtype or a.shape != b.shape:
         return False
+    if a.dtype.names and a.dtype.hasobject:
+        return all(identical(a[f], b[f]) for f in a.dtype.names)
     if a.dtype.kind == "O":
         for x, y in zip(a.ravel().tolist(), b.ravel().tolist()):
             if isinstance(x, n.ndarray) or isinstance(y, n.ndarray):
@@ -364,12 +385,15 @@ def run(args):
             wt = line.split("\n")[0].split(" ", 1)[1]
             if git("status", "--porcelain", "--untracked-files=no", cwd=wt):
                 print("WARNING: the worktree %s of %s has uncommitted changes; they are not tested" % (wt, args.target))
-    mine = open(os.path.abspath(__file__)).read()
-    r = subprocess.run(["git", "show", "%s:review/regression.py" % base], cwd=REPO, capture_output=True, text=True)
-    if r.returncode != 0:
-        print("WARNING: %s has no review/regression.py yet; running this copy (bootstrap)" % args.base)
-    elif r.stdout != mine and not args.allow_other_tool:
-        raise Invalid("this copy of the tool differs from %s's; run %s's copy (REVIEW_PROCESS.md)" % (args.base, args.base))
+    for rel in ("review/regression.py", "review/benchmark.json"):
+        mine = open(os.path.join(REPO, rel)).read()
+        r = subprocess.run(["git", "show", "%s:%s" % (base, rel)], cwd=REPO, capture_output=True, text=True)
+        if r.returncode != 0:
+            print("WARNING: %s has no %s yet; using this copy (bootstrap)" % (args.base, rel))
+        elif r.stdout != mine and not args.allow_other_tool:
+            raise Invalid("this copy of %s differs from %s's; run %s's copy (REVIEW_PROCESS.md)"
+                          % (rel, args.base, args.base))
+    clean_stale()
     key = environment_key()
     base_out, fail_b = run_commit(base, key, args.jobs)
     if fail_b:

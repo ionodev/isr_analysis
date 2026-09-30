@@ -51,8 +51,12 @@ someone has to confirm that it does.
    python3 ~/isr_project/isr_analysis/review/regression.py <branch>
    ```
 
-   The tool refuses to run if it is not identical to `main`'s copy of
-   `review/regression.py`. The path above is `main`'s copy only while that
+   The tool refuses to run if its `review/regression.py` or
+   `review/benchmark.json` is not identical to `main`'s copy. The flag
+   `--allow-other-tool` overrides this. It is only for testing a change to
+   the tool itself, and such a change needs Henrik's approval. When `main`
+   has no tool yet (the branch that introduced it), the tool warns and runs
+   its own copy. The path above is `main`'s copy only while that
    checkout is on `main`.
 
    It must exit with status 0 ("Every output is bit-identical"). The record
@@ -108,7 +112,8 @@ memo found something at it:
   pass, and a quiet night;
 - misa-l: lost lags at the clutter gates, a cycle change, power-line
   impulses, and the start of the recording;
-- a 300 s `fit_lpi` stretch and a mode-300 range–Doppler period per channel.
+- a 300 s `fit_lpi` stretch, and 13 consecutive mode-300 range–Doppler
+  periods per channel.
 
 `review/regression.py` runs these stages with the code of `main` and of the
 branch:
@@ -141,7 +146,9 @@ Exit status:
   either side, nothing was compared, the branch does not contain `main`, or
   the tool failed. The logs are under the run directory.
 
-RUNTIME
+One commit takes about 19 minutes with 16 jobs (measured on 2026-09-30:
+1129 s for `main`, 1113 s for a branch), so a review with a fresh `main`
+takes about 40 minutes, and about 20 when `main`'s outputs are cached.
 
 Add a period to the benchmark when a new problem is found. This changes the
 key, so every commit is run afresh.
