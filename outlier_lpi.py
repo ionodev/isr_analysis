@@ -865,8 +865,23 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # note that 1/sigma is taken earlier when forming mm_g and mm_e
                 ATm_e=BT.dot(mm_e)
 
-                # error covariance
-                Sigma=n.linalg.inv(ATA)
+                # error covariance. An unknown no measurement constrains (a
+                # zero column of B: at some lags the lowest range gate of the
+                # first periods of a recording) makes ATA singular, which used
+                # to lose the whole integration period. Invert for the others
+                # and give it NaN; with every unknown constrained this is the
+                # plain inverse, as before.
+                free=n.real(n.diag(ATA))>0
+                if free.all():
+                    Sigma=n.linalg.inv(ATA)
+                else:
+                    fi=n.where(free)[0]
+                    print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,n.sum(~free),n.where(~free)[0][:8].tolist()))
+                    Sigma=n.zeros(ATA.shape,dtype=ATA.dtype)
+                    Sigma[n.ix_(fi,fi)]=n.linalg.inv(ATA[n.ix_(fi,fi)])
+                    # NaN on the diagonal only, so that it reaches the estimate
+                    # and variance of that unknown and nothing else
+                    Sigma[~free,~free]=n.nan
 
                 # ML estimate for ACF lag without ground clutter mitigation measures in place
                 xhat_e=n.dot(Sigma,ATm_e)
