@@ -31,15 +31,19 @@
   },
   "range_doppler_300": {
     "zenith-l": [
-      10812
+      10812,
+      10824
     ],
     "misa-l": [
-      10875
+      10875,
+      10887
     ]
   },
-  "fit_lpi_note": "8 Apr 16:18:20-16:23:10 UTC: 15 LPI files on each channel (the whole-hour run of Memo 29)",
+  "fit_lpi_note": "8 Apr 16:32:20-16:37:10 UTC: 15 LPI files on each channel (the whole-hour run of Memo 29)",
   "fit_lp": {
     "zenith-l": true,
     "misa-l": true
-  }
+  },
+  "range_doppler_300_note": "13 consecutive mode-300 periods per channel inside one of its own cycles (zenith 16:02:00-16:04:00, MISA 16:12:30-16:14:30), so that fit_lp's 60 s windows have files",
+  "fit_lp_note": "fit_lp runs with a 60 s averaging window, not run_analysis's 600 s (which would need 61 rd300 periods)"
 }

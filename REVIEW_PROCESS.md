@@ -14,7 +14,7 @@ velocities the pipeline writes.
 | | Gate A: output-neutral | Gate B: product-changing |
 |---|---|---|
 | examples | new scripts, tests, refactoring, speed-ups, new options that are off by default | bug fixes that change numbers, new defaults, calibration changes |
-| decided by | the benchmark: bit-identical outputs | the benchmark: any output differs |
+| decided by | bit-identical benchmark outputs, and the reviewer's judgement of what the benchmark does not cover | any output differs, or a change the benchmark cannot see |
 | approval | none, merged once the gate is passed | Henrik; Juha too for calibration or physics |
 
 A change that is meant to be neutral but does not give bit-identical outputs
@@ -51,6 +51,10 @@ someone has to confirm that it does.
    python3 ~/isr_project/isr_analysis/review/regression.py <branch>
    ```
 
+   The tool refuses to run if it is not identical to `main`'s copy of
+   `review/regression.py`. The path above is `main`'s copy only while that
+   checkout is on `main`.
+
    It must exit with status 0 ("Every output is bit-identical"). The record
    gives the tested commit. If commits are added after the run, it is
    repeated, unless those commits change documentation only.
@@ -62,8 +66,11 @@ someone has to confirm that it does.
 4. **Review record.** Write `review/records/<YYYY-MM-DD>-<branch>.md` from
    `review/records/TEMPLATE.md` (with any `/` in the branch name replaced by
    `-`) and commit it on the branch.
-5. **Merge.** Merge into `main` with a merge commit that names the record,
-   then push `main` and the branch.
+5. **Merge.** Right before merging, check that `main` has not moved since the
+   benchmark: `git merge-base --is-ancestor main <tested commit>`. If it has,
+   merge `main` into the branch and repeat the benchmark. Then merge into
+   `main` with a merge commit that names the record, and push `main` and the
+   branch.
 
 ## 3. Gate B: product-changing changes
 
@@ -108,8 +115,11 @@ branch:
 - `outlier_lpi.lpi_files`, with the arguments `run_analysis.py` passes for
   `config/millstone_eclipse2024.json`;
 - `fit_lpi.fit_lpifiles`;
-- `avg_range_doppler_spec` for mode 300;
-- `fit_lp.fit_spectra` on its output.
+- `avg_range_doppler_spec` for mode 300, on 13 consecutive periods per
+  channel;
+- `fit_lp.fit_spectra` on its output. This uses a 60 s averaging window
+  instead of `run_analysis.py`'s 600 s, which would need 61 range–Doppler
+  periods.
 
 It then compares every dataset and attribute of every output file, byte for
 byte. Each commit gets a detached worktree under

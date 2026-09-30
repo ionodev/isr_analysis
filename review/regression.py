@@ -58,6 +58,14 @@ LPI = dict(rg=60, avg_dur=10, min_tx_frac=0.5, pass_band=1e5, filter_len=20, max
            save_acf_images=False, lag_avg=1, reanalyze=True)
 CHUNK = 8                   # LPI periods per process: the metadata are read once per process
 MIN_STRETCH_FILES = 10      # the fit stretch must give at least this many LPI files per channel
+# fit_lp averages over windows of avg_dur and needs files spanning more than one
+# window (run_analysis uses 600 s, which would need 61 rd300 periods); the
+# benchmark uses a 60 s window over a short run of rd300 periods instead
+FIT_LP_AVG_DUR = 60
+AVG = LPI["avg_dur"]
+
+
+LOCKS = []
 
 
 class Invalid(Exception):
@@ -92,14 +100,18 @@ def worker(kind, code, out, channel, periods):
                           radar_freq_hz=440.2e6, table_dir=BENCH["table_dir"])
     elif kind == "fit_lp":
         import fit_lp as flp
-        flp.fit_spectra(dirname=DATA, channel=channel, postfix="_300_outlier", avg_dur=600, ridx=[35, 230],
+        flp.fit_spectra(dirname=DATA, channel=channel, postfix="_300_outlier", avg_dur=FIT_LP_AVG_DUR, ridx=[35, 230],
                         remove_space_objects=False, reanalyze=True, output_base=out, radar_freq_hz=440.2e6,
                         table_dir=BENCH["table_dir"], fit_bandwidth_hz=50e3, notch_bands_hz=None,
                         pulse_length_us=None)
-    # every module of the repository that was loaded must come from this worktree
+    # every module of the repository that was loaded must come from this
+    # worktree (the tool itself is the one exception)
+    me = os.path.abspath(__file__)
     for name, m in list(sys.modules.items()):
-        f = getattr(m, "__file__", None) or ""
-        if f.startswith(os.path.expanduser("~/isr_project/")) and not os.path.abspath(f).startswith(code + os.sep):
+        f = os.path.abspath(getattr(m, "__file__", None) or "/")
+        if f == me or not f.startswith(os.path.expanduser("~/isr_project") + os.sep):
+            continue
+        if not f.startswith(code + os.sep):
             raise RuntimeError("module %s was loaded from %s, not from %s" % (name, f, code))
 
 
@@ -116,7 +128,11 @@ def jobs_for(stage):
         return [("lpi", ch, per[i:i + CHUNK]) for ch in ("zenith-l", "misa-l")
                 for per in [lpi_periods(ch)] for i in range(0, len(per), CHUNK)]
     if stage == "rd300":
-        return [("rd300", ch, [p]) for ch, ps in BENCH["range_doppler_300"].items() for p in ps]
+        out = []
+        for ch, (a, b) in BENCH["range_doppler_300"].items():
+            per = list(range(a, b + 1))
+            out += [("rd300", ch, per[i:i + 4]) for i in range(0, len(per), 4)]
+        return out
     if stage == "fit_lpi":
         return [("fit_lpi", ch, []) for ch in BENCH["fit_lpi"]]
     if stage == "fit_lp":
@@ -128,7 +144,14 @@ def environment_key():
     h = hashlib.sha256()
     for f in (os.path.abspath(__file__), os.path.join(HERE, "benchmark.json")):
         h.update(open(f, "rb").read())
-    h.update(subprocess.run([sys.executable, "-m", "pip", "freeze"], capture_output=True, text=True).stdout.encode())
+    r = subprocess.run([sys.executable, "-m", "pip", "freeze"], capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise Invalid("pip freeze failed, so the environment key cannot be made: %s" % r.stderr.strip())
+    h.update(r.stdout.encode())
+    # the numerical system libraries under numpy, scipy, h5py and pyfftw
+    r = subprocess.run(["dpkg-query", "-W", "libopenblas*", "libblas*", "liblapack*", "libfftw3*", "libhdf5*"],
+                       capture_output=True, text=True)
+    h.update(r.stdout.encode())
     h.update(sys.version.encode())
     for f in sorted(glob.glob(os.path.join(BENCH["table_dir"], "*"))):
         st = os.stat(f)
@@ -159,14 +182,15 @@ def run_commit(sha, key, n_jobs):
     out = os.path.join(ROOT, "runs", "%s-%s" % (sha, key))
     os.makedirs(os.path.join(ROOT, "runs"), exist_ok=True)
     lock = open(out + ".lock", "w")
-    fcntl.flock(lock, fcntl.LOCK_EX)          # one run per commit at a time
+    fcntl.flock(lock, fcntl.LOCK_EX)          # one run per commit and key at a time
+    LOCKS.append(lock)                        # held until the process ends, through the comparison
     done = os.path.join(out, "DONE")
     if os.path.exists(done) and json.load(open(done)).get("key") == key:
         print("%s: cached outputs in %s" % (sha[:7], out), flush=True)
         return out, []
     if os.path.exists(out):
         shutil.rmtree(out)                    # nothing from an earlier, failed run may be compared
-    code = os.path.join(ROOT, "worktrees", sha)
+    code = os.path.join(ROOT, "worktrees", "%s-%s" % (sha, key))
     if not os.path.isdir(code):
         os.makedirs(os.path.dirname(code), exist_ok=True)
         git("worktree", "add", "--detach", code, sha)
@@ -191,7 +215,7 @@ def expected(out):
     """The outputs the benchmark must produce; returns a list of what is missing."""
     from digital_rf import DigitalMetadataReader
     b0 = DigitalMetadataReader("%s/metadata/id_metadata" % DATA).get_bounds()[0]
-    t = lambda ai: int((b0 + ai * 10 * 10**6) / 1e6)
+    t = lambda ai: int((b0 + ai * AVG * 10**6) / 1e6)
     missing = []
     for ch, per in BENCH["lpi"].items():
         for ai in per:
@@ -205,8 +229,8 @@ def expected(out):
         pp = [int(os.path.basename(f)[3:-3]) for f in glob.glob(os.path.join(out, "lpi_%d" % LPI["rg"], ch, "pp-*.h5"))]
         if not any(t(a) - 300 <= x <= t(b) for x in pp):
             missing.append("%s: no fit_lpi output for the fit stretch" % ch)
-    for ch, per in BENCH["range_doppler_300"].items():
-        for ai in per:
+    for ch, (a, b) in BENCH["range_doppler_300"].items():
+        for ai in range(a, b + 1):
             f = os.path.join(out, "range_doppler_300_outlier", ch, "il_%d.h5" % t(ai))
             if not os.path.exists(f):
                 missing.append(os.path.relpath(f, out))
@@ -218,11 +242,11 @@ def expected(out):
 
 # ---------------------------------------------------------------- comparing
 
-def datasets(h):
-    """Every dataset of an HDF5 file, by its full path."""
-    out = {}
-    h.visititems(lambda name, obj: out.__setitem__(name, obj) if hasattr(obj, "shape") else None)
-    return out
+def members(h):
+    """Every dataset and every group of an HDF5 file, by full path."""
+    ds, gr = {}, {"/": h}
+    h.visititems(lambda name, obj: (ds if hasattr(obj, "shape") else gr).__setitem__(name, obj))
+    return ds, gr
 
 
 def identical(a, b):
@@ -230,7 +254,13 @@ def identical(a, b):
     if a.dtype != b.dtype or a.shape != b.shape:
         return False
     if a.dtype.kind == "O":
-        return all(x == y for x, y in zip(a.ravel().tolist(), b.ravel().tolist()))
+        for x, y in zip(a.ravel().tolist(), b.ravel().tolist()):
+            if isinstance(x, n.ndarray) or isinstance(y, n.ndarray):
+                if not identical(n.asarray(x), n.asarray(y)):
+                    return False
+            elif type(x) is not type(y) or x != y:
+                return False
+        return True
     return a.tobytes() == b.tobytes()
 
 
@@ -291,17 +321,24 @@ def compare(base_out, test_out):
         rows.append((f, "", "only in the commit under review"))
     for f in sorted(fb & ft):
         with h5py.File(os.path.join(base_out, f), "r") as hb, h5py.File(os.path.join(test_out, f), "r") as ht:
-            db, dt = datasets(hb), datasets(ht)
+            (db, gb), (dt, gt) = members(hb), members(ht)
             changed = False
-            if not same_attrs(hb, ht):
-                rows.append((f, "/", "file attributes differ"))
+            for g in sorted(set(gb) ^ set(gt)):
+                rows.append((f, g, "group only in %s" % ("base" if g in gb else "the commit under review")))
                 changed = True
+            for g in sorted(set(gb) & set(gt)):
+                if not same_attrs(gb[g], gt[g]):
+                    rows.append((f, g, "group attributes differ"))
+                    changed = True
             for k in sorted(set(db) ^ set(dt)):
                 rows.append((f, k, "dataset only in %s" % ("base" if k in db else "the commit under review")))
                 changed = True
             for k in sorted(set(db) & set(dt)):
                 a, b = n.asarray(db[k][()]), n.asarray(dt[k][()])
-                if not identical(a, b):
+                if db[k].id.get_type() != dt[k].id.get_type():
+                    rows.append((f, k, "HDF5 storage type differs (%s -> %s)" % (db[k].dtype, dt[k].dtype)))
+                    changed = True
+                elif not identical(a, b):
                     rows.append((f, k, describe(k, a, b, db)))
                     changed = True
                 elif not same_attrs(db[k], dt[k]):
@@ -323,10 +360,16 @@ def run(args):
         raise Invalid("%s does not contain %s: merge or rebase %s into the branch first, so that only its own "
                       "changes are compared" % (args.target, args.base, args.base))
     for line in git("worktree", "list", "--porcelain").split("\n\n"):
-        if "branch refs/heads/%s" % args.target in line:
+        if ("branch refs/heads/%s" % args.target) in line.split("\n"):
             wt = line.split("\n")[0].split(" ", 1)[1]
             if git("status", "--porcelain", "--untracked-files=no", cwd=wt):
                 print("WARNING: the worktree %s of %s has uncommitted changes; they are not tested" % (wt, args.target))
+    mine = open(os.path.abspath(__file__)).read()
+    r = subprocess.run(["git", "show", "%s:review/regression.py" % base], cwd=REPO, capture_output=True, text=True)
+    if r.returncode != 0:
+        print("WARNING: %s has no review/regression.py yet; running this copy (bootstrap)" % args.base)
+    elif r.stdout != mine and not args.allow_other_tool:
+        raise Invalid("this copy of the tool differs from %s's; run %s's copy (REVIEW_PROCESS.md)" % (args.base, args.base))
     key = environment_key()
     base_out, fail_b = run_commit(base, key, args.jobs)
     if fail_b:
@@ -339,9 +382,10 @@ def run(args):
                  datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M"), key, n_files, n_ident), ""]
     for kind, ch, per in fail_t:
         lines.append("- FAILED job (under review): %s %s periods %s; see %s/logs" % (kind, ch, per, test_out))
-    for side, m in miss.items():
-        for x in m:
-            lines.append("- MISSING (%s): %s" % (side, x))
+    for x in miss["base"]:
+        lines.append("- MISSING in the base (invalid run): %s" % x)
+    for x in sorted(set(miss["under review"]) - set(miss["base"])):
+        lines.append("- MISSING in the commit under review (a difference): %s" % x)
     if n_files == 0:
         lines.append("- NO OUTPUTS were compared.")
     if rows:
@@ -354,8 +398,11 @@ def run(args):
     name = "%s-%s_vs_%s-%s.md" % (args.target.replace("/", "_"), test[:7], args.base.replace("/", "_"), base[:7])
     open(os.path.join(ROOT, "reports", name), "w").write(txt)
     print("report: %s" % os.path.join(ROOT, "reports", name))
-    if fail_t or n_files == 0 or any(miss.values()):
+    only_branch = set(miss["under review"]) - set(miss["base"])
+    if fail_t or n_files == 0 or miss["base"]:
         return 2
+    if only_branch:
+        return 1
     return 1 if rows else 0
 
 
@@ -368,6 +415,8 @@ def main():
     p.add_argument("target", help="branch or commit under review")
     p.add_argument("--base", default="main")
     p.add_argument("--jobs", type=int, default=16)
+    p.add_argument("--allow-other-tool", action="store_true",
+                   help="run although this copy of the tool differs from the base's (only to test the tool itself)")
     args = p.parse_args()
     try:
         status = run(args)
