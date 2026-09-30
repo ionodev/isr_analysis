@@ -1,5 +1,5 @@
 {
-  "description": "Fixed regression benchmark for REVIEW_PROCESS.md. Periods are integration-period indices (10 s each from the first pulse of the eclipse2024 recording; 10800 = 2024-04-08 16:00:00 UTC). Each was chosen because an earlier memo found something at it.",
+  "description": "Fixed regression benchmark for REVIEW_PROCESS.md. Periods are integration-period indices (10 s each from the first pulse of the eclipse2024 recording; 10800 = 2024-04-08 16:00:00 UTC). Each was chosen because an earlier memo found something at it. Stages: lpi (outlier_lpi, pipeline defaults), fit_lpi, rd300 (avg_range_doppler_spec, mode 300) and fit_lp on the rd300 output. run_analysis.py itself is bypassed; its config mapping is not tested.",
   "data": "/mnt/data/juha/millstone_hill/isr/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000",
   "table_dir": "/home/henrik/isr_project/isr_analysis/data",
   "lpi": {
@@ -9,7 +9,8 @@
       "11008": "made only of wrong-antenna pulses (Memo 30)",
       "10471": "power-line impulses (Memo 21)",
       "3070": "long bright Starlink pass (Memo 16)",
-      "1471": "quiet night (Memo 21)"
+      "1471": "quiet night (Memo 21)",
+      "11075": "quiet zenith period after the fit stretch, so that the stretch is not the last group fit_lpi sees (fit_lpi skips the last group on main before fit-lpi-last-group)"
     },
     "misa-l": {
       "10875": "lags lost to the clutter gates with outlier rejection (Memo 29)",
@@ -19,11 +20,26 @@
     }
   },
   "fit_lpi": {
-    "zenith-l": [10920, 10949],
-    "misa-l": [10920, 10949]
+    "zenith-l": [
+      10994,
+      11023
+    ],
+    "misa-l": [
+      10994,
+      11023
+    ]
   },
   "range_doppler_300": {
-    "zenith-l": [10812],
-    "misa-l": [10875]
+    "zenith-l": [
+      10812
+    ],
+    "misa-l": [
+      10875
+    ]
+  },
+  "fit_lpi_note": "8 Apr 16:18:20-16:23:10 UTC: 15 LPI files on each channel (the whole-hour run of Memo 29)",
+  "fit_lp": {
+    "zenith-l": true,
+    "misa-l": true
   }
 }

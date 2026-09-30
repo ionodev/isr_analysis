@@ -17,35 +17,59 @@ velocities the pipeline writes.
 | decided by | the benchmark: bit-identical outputs | the benchmark: any output differs |
 | approval | none, merged once the gate is passed | Henrik; Juha too for calibration or physics |
 
-If in doubt, the benchmark decides. A change that is meant to be neutral but
-does not give bit-identical outputs is either a bug or a gate-B change.
+A change that is meant to be neutral but does not give bit-identical outputs
+is either a bug or a gate-B change. The reverse does not hold: bit-identical
+outputs on the benchmark are necessary for gate A, but not sufficient. The
+benchmark does not cover:
+- `run_analysis.py` itself (how the configuration maps to arguments);
+- how the theory tables are generated (`isr_spec.py`, `il_interp.py` table
+  building: the benchmark reads the existing tables);
+- mode 800, options that are off by default, and data outside the benchmark.
 
-Changes to documentation only (Markdown, LaTeX, comments) need no gate.
+A change to any of these must be shown neutral in another way that the
+reviewer accepts, for example a targeted test. Otherwise it is gate B.
+Changes to how the tables are generated are always gate B.
+
+Changes to the review tooling itself (`review/regression.py`,
+`review/benchmark.json`, this file) need Henrik's approval, like gate B.
+
+Changes to documentation only (Markdown, LaTeX) need no gate. A `.py` change
+that is meant to touch comments only still goes through gate A, because
+someone has to confirm that it does.
 
 ## 2. Gate A: output-neutral changes
 
 1. **Tests.** `python3 -m pytest -q` passes. New code comes with unit tests
    (`test_*.py`) where it can be tested without the raw data.
-2. **Benchmark**, if the change touches pipeline code (anything imported by
-   `run_analysis.py`, `outlier_lpi.py`, `fit_lpi.py`,
-   `avg_range_doppler_spec.py`, `fit_lp.py` or the modules they use):
-   `python3 review/regression.py <branch>` must exit with status 0 ("Every
-   output is bit-identical").
+2. **Benchmark**, whenever `git diff --name-only main...<branch>` lists a
+   `.py` file other than `test_*.py` and the files under `review/`. First
+   merge or rebase `main` into the branch, so that only its own changes are
+   compared. Then run **main's copy** of the tool, so that a branch cannot
+   judge itself with a changed tool:
+
+   ```bash
+   python3 ~/isr_project/isr_analysis/review/regression.py <branch>
+   ```
+
+   It must exit with status 0 ("Every output is bit-identical"). The record
+   gives the tested commit. If commits are added after the run, it is
+   repeated, unless those commits change documentation only.
 3. **Independent code review.** A reviewer who did not write the change reads
    the diff (`git diff main...<branch>`) against the checklist in section 5.
    For Claude this means a fresh session or a subagent with no part in the
    work, for example `/code-review` at high effort. Findings are fixed, or
    answered in the record, and the reviewer checks the fixes.
 4. **Review record.** Write `review/records/<YYYY-MM-DD>-<branch>.md` from
-   `review/records/TEMPLATE.md` and commit it on the branch.
+   `review/records/TEMPLATE.md` (with any `/` in the branch name replaced by
+   `-`) and commit it on the branch.
 5. **Merge.** Merge into `main` with a merge commit that names the record,
    then push `main` and the branch.
 
 ## 3. Gate B: product-changing changes
 
 1. **Tests**, as in gate A.
-2. **Benchmark, quantified.** Run `python3 review/regression.py <branch>`
-   and keep the report. It shows which outputs change and by how much: in
+2. **Benchmark, quantified.** Run main's copy of the tool on the branch, as
+   in gate A, and keep the report. It shows which outputs change and by how much: in
    standard deviations for the ACFs, relative for the rest, and lost or
    recovered values. Every change in it must be explained by the fix. A
    change nobody can explain is a bug until shown otherwise.
@@ -60,9 +84,11 @@ Changes to documentation only (Markdown, LaTeX, comments) need no gate.
    checked.
 6. **Review record**, as in gate A, with the benchmark report and the
    verification attached.
-7. **Approval.** Henrik approves the merge, and Juha too for calibration or
-   physics. Until then the branch is pushed but not merged, and it is listed
-   in TODO.tex (Q8).
+7. **Pull request and approval.** Open a pull request within the fork
+   (section 6), with the record's content. Henrik approves the merge, and
+   Juha too for calibration or physics, in the pull request or in person.
+   Until then the branch is pushed but not merged, and it is listed in
+   TODO.tex (Q8).
 8. **Merge**, as in gate A. Products made before the merge are marked
    out of date in TODO.tex.
 
@@ -77,23 +103,38 @@ memo found something at it:
   impulses, and the start of the recording;
 - a 300 s `fit_lpi` stretch and a mode-300 range–Doppler period per channel.
 
-`review/regression.py` runs the pipeline's default stages on these periods
-with the code of `main` and of the branch. Each commit gets a detached
-worktree under `~/isr_project/regression/worktrees/`. Each job runs in its
-own memory-limited scope. A commit's outputs are cached under
-`~/isr_project/regression/runs/<sha>/`, so `main` is computed only once per
-commit. Reports go to `~/isr_project/regression/reports/`.
+`review/regression.py` runs these stages with the code of `main` and of the
+branch:
+- `outlier_lpi.lpi_files`, with the arguments `run_analysis.py` passes for
+  `config/millstone_eclipse2024.json`;
+- `fit_lpi.fit_lpifiles`;
+- `avg_range_doppler_spec` for mode 300;
+- `fit_lp.fit_spectra` on its output.
+
+It then compares every dataset and attribute of every output file, byte for
+byte. Each commit gets a detached worktree under
+`~/isr_project/regression/worktrees/`, removed after a successful run. Each
+job runs in its own memory-limited scope. A commit's outputs are cached under
+`~/isr_project/regression/runs/<sha>-<key>/`. The key is a hash of the tool,
+the benchmark, the installed Python packages and the table files, so a
+change to any of them starts a fresh run. Two runs of the same commit wait
+for each other. Reports go to `~/isr_project/regression/reports/`.
 
 ```bash
-python3 review/regression.py <branch> [--base main] [--jobs 16]
+python3 ~/isr_project/isr_analysis/review/regression.py <branch> [--base main] [--jobs 16]
 ```
 
-Exit status: 0 bit-identical, 1 some output differs, 2 a job failed or an
-output is missing (see the logs under the run directory). One commit takes
-about half an hour with 16 jobs.
+Exit status:
+- 0: every output is bit-identical;
+- 1: some output differs;
+- 2: the run is not valid. A job failed, an expected output is missing on
+  either side, nothing was compared, the branch does not contain `main`, or
+  the tool failed. The logs are under the run directory.
 
-Add a period to the benchmark when a new problem is found. After changing
-the benchmark, delete the cached runs (`~/isr_project/regression/runs/`).
+RUNTIME
+
+Add a period to the benchmark when a new problem is found. This changes the
+key, so every commit is run afresh.
 
 ## 5. Review checklist
 
@@ -117,15 +158,26 @@ The reviewer checks at least:
 
 ## 6. Pull requests
 
-The review record in the branch is the record of the review, so a pull
-request is optional. When one is used, it is opened within the fork
-(`ionodev/isr_analysis`, branch into `main`), never against
-`jvierine/isr_analysis`. The description follows
-`.github/pull_request_template.md`.
+The review record in the branch is the durable record of the review. Gate-B
+changes also get a pull request, so that Henrik and Juha can read and approve
+them on GitHub. Gate-A changes may have one. Pull requests are opened within
+the fork, branch into `main`, never against `jvierine/isr_analysis`. The
+repository is a fork, and `gh` would otherwise offer the parent as the
+target, so always pass `--repo`:
+
+```bash
+gh pr create --repo ionodev/isr_analysis --base main --head <branch> \
+  --title "<title>" --body-file review/records/<record>.md
+```
+
+The description follows `.github/pull_request_template.md`. After approval,
+merge with a merge commit, either locally (then push) or with
+`gh pr merge <number> --merge --repo ionodev/isr_analysis`.
 
 ## 7. Autonomous runs
 
 Autonomous Claude runs (see `~/isr_project/AUTONOMOUS_RUNS.md`) follow the
 same gates. They may merge gate-A changes themselves, with a subagent as the
 independent reviewer. They push gate-B branches without merging them, with
-the benchmark report and the verification ready in the record.
+the benchmark report and the verification ready in the record, and they may
+open the pull request.
