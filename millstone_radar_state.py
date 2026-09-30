@@ -7,6 +7,13 @@ radar_lat=42.61932878636544
 radar_lon=-71.49124624803031
 radar_hgt=146.0
 
+# The zenith antenna does not point at the geodetic zenith: its beam is at
+# elevation 88.16 deg, azimuth 172.9 deg (memo 7), from satellite echoes and
+# confirmed by the transit of Cygnus A. The metadata report 90 deg. The angular
+# uncertainty of this fit has not been estimated (memo 23 depends on it).
+ZENITH_BEAM_EL_DEG=88.16
+ZENITH_BEAM_AZ_DEG=172.9
+
 def get_tx_power_model(dirn,plot=False):
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)
@@ -118,6 +125,43 @@ def get_antenna_select(dirn,plot=False):
     # for the same value.
     return(tx_sel,rx_sel)
 
+
+
+def get_misa_pointing(dirn):
+    """
+    MISA's commanded pointing at any sample index, read as the experiment
+    schedule the antenna control metadata are: each record cycle starts with
+    an event that gives MISA's azimuth and elevation, and holds until the next
+    event.  Returns f(keys) -> (az, el, cycle, stationary) for sample indices
+    (microseconds): azimuth (0-360) and elevation in degrees of the latest
+    event at or before each key, the cycle name of the latest named event, and
+    whether the latest event opens one of MISA's own record cycles (its name
+    starts with "misa"), during which MISA holds still.  In the zenith cycles
+    and the gaps between cycles MISA may be slewing to its next position.
+
+    get_misa_az_el_model interpolates between events, which puts a period near
+    a cycle change between two positions; this is a step function.
+    """
+    acmd=DigitalMetadataReader(dirn)
+    b=acmd.get_bounds()
+    ev=acmd.read(b[0],b[1])
+    keys=n.array(sorted(ev.keys()),dtype=n.int64)
+    az=n.array([float(ev[k]["misa_azimuth"])%360.0 for k in keys])
+    el=n.array([float(ev[k]["misa_elevation"]) for k in keys])
+    name=[ev[k].get("cycle_name","") for k in keys]
+    name=n.array([x.decode() if isinstance(x,bytes) else str(x) for x in name])
+    named=n.array(name,dtype=object)
+    last=""
+    for i in range(len(named)):
+        if named[i]:
+            last=named[i]
+        named[i]=last
+    stat=n.array([x.startswith("misa") for x in name])
+    def f(k):
+        k=n.atleast_1d(n.asarray(k,dtype=n.int64))
+        i=n.clip(n.searchsorted(keys,k,side="right")-1,0,len(keys)-1)
+        return az[i],el[i],named[i],stat[i]
+    return f
 
 
 def get_misa_az_el_model(dirn):
