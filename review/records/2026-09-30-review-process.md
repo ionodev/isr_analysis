@@ -142,4 +142,5 @@ absolute density scale.
 
 ## Decision
 
-Waiting for Henrik's approval, as a change to the review tooling.
+Approved by Henrik on 2026-10-01, and merged by him on GitHub as pull request #1
+(merge commit 51b9a0c, containing the reviewed head 6e998aa unchanged).
