@@ -37,7 +37,12 @@ T_INJECTION = 1172.0
 TMM = {}
 
 # uncoded long pulse
-TMM[300] = {"noise0": 7800, "noise1": 8371, "tx0": 76, "tx1": 645,
+# The diode switches on at about 7813 us in mode 300 and overshoots for the
+# first 5-10 us, to 18 times its level on misa-l (1.5 times on zenith-l): a
+# window from 7800 included 13 background samples and the spike, which raised
+# misa-l's injection power by 29 % and lowered its T_sys by 26 % (memo 27).
+# The window now starts at 7830, after the diode has settled.
+TMM[300] = {"noise0": 7830, "noise1": 8371, "tx0": 76, "tx1": 645,
             "gc": 1000, "last_echo": 7700, "e_gc": 800, "read_length": 10000}
 
 # 16-baud alternating codes
