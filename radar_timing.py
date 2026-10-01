@@ -38,10 +38,16 @@ TMM = {}
 
 # uncoded long pulse
 # The diode switches on at about 7813 us in mode 300 and overshoots for the
-# first 5-10 us, to 18 times its level on misa-l (1.5 times on zenith-l): a
-# window from 7800 included 13 background samples and the spike, which raised
-# misa-l's injection power by 29 % and lowered its T_sys by 26 % (memo 27).
-# The window now starts at 7830, after the diode has settled.
+# first 5-10 us: averaged over its first 5 us the power is 33 times the
+# settled level on misa-l and 3 times on zenith-l (memo 27). A window from
+# 7800 included 13 background samples and the spike, which raised misa-l's
+# injection power by 29 % and lowered its T_sys by 26 % (memo 27). The window
+# now starts at 7830, after the unfiltered diode power has settled (by about
+# 7822, memo 35). The receiver's low-pass filters smear the spike: with the
+# range-Doppler path's filter about 1 % of injection power is left at 7830 on
+# misa-l, none from about 7850 (gate A review, 2026-10-01).
+# The satellite catalogue has its own mode table with noise0 7800, which is
+# correct there (its quiet window ends before the diode): do not synchronise.
 TMM[300] = {"noise0": 7830, "noise1": 8371, "tx0": 76, "tx1": 645,
             "gc": 1000, "last_echo": 7700, "e_gc": 800, "read_length": 10000}
 
