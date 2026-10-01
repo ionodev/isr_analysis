@@ -9,7 +9,9 @@
 **Benchmark:** `python3 review/regression.py <branch>`: exit status, and for
 gate B the changes and their explanation.
 
-**Verification and scientific review (gate B):** what was recomputed, the verdict, the findings, and what was done.
+**Scientific review (gate B):** verdict, spot checks, findings, and what was done.
+
+**Full verification (gate B, when flagged; always for calibration):** what was recomputed, or why it was not needed.
 
 **Code review:** reviewer, findings, and what was done.
 

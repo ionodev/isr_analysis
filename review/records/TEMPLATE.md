@@ -28,11 +28,17 @@ code touched".
 For gate B: which outputs change and by how much, and why each change is
 expected.
 
-## Verification and scientific review (gate B, and memos with results)
+## Scientific review (gate B, and memos with results)
 
-Reviewer (`isr-science-reviewer`): what it recomputed and whether it agreed,
-its verdict, its findings and what was done about each, and its questions
-for the supervisor.
+Reviewer (`isr-science-reviewer`): its verdict, its spot checks, the claims
+it could not confirm, whether it called for a full verification, its
+findings and what was done about each, and its questions for the
+supervisor.
+
+## Full verification (when flagged, and always for calibration)
+
+What was recomputed, with which scripts and runs, and the result. Or: "not
+needed", and why.
 
 ## Code review
 

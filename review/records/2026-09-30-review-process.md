@@ -132,6 +132,14 @@ independent verification and scientific review by `isr-science-reviewer`
 trial above did the verification and the scientific review together, which
 is the form gate B now takes.
 
+Later the same day, again to save usage and at Henrik's request, gate B's
+review was split. First comes a scientific review with spot checks: it
+recomputes the one or two key numbers from existing result files, with no
+new data runs, and lists any claims it could not confirm. A full independent
+verification follows only when that review flags something or leaves a key
+claim unconfirmed, and always for changes to the calibration or the
+absolute density scale.
+
 ## Decision
 
 Waiting for Henrik's approval, as a change to the review tooling.

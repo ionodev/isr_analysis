@@ -16,8 +16,9 @@ whether the change also needs **gate B**:
   new scripts, tests, refactoring, speed-ups, new options that are off by
   default.
 - **Some output differs** (the change is *product-changing*): gate B follows.
-  Gate B is an independent verification and a scientific review of the new
-  results, and Henrik's approval, and Juha's too for calibration or physics.
+  Gate B is a scientific review of the new results, a full independent
+  verification when that review calls for it, and Henrik's approval, and
+  Juha's too for calibration or physics.
   Examples: bug fixes that change numbers, new defaults, calibration changes.
 
 Gate B does not repeat the code review. It checks what gate A cannot: whether
@@ -101,25 +102,35 @@ someone has to confirm that it does.
    fix. A change nobody can explain is a bug until shown otherwise.
 2. **Memo.** A memo says what changed, why, by how much, and what was not
    checked.
-3. **Independent verification and scientific review**, by one independent
-   reviewer: the `isr-science-reviewer` agent on Opus 5.5 (sections 5, 6a).
-   - **Verification first:** it recomputes the key claims with its own,
-     separately written scripts, not the author's. For example, it checks
-     "the metadata are 8.6 s late", or "the injection window catches the
-     spike". Memo 30's last section is an example: it found two overstated
-     numbers.
-   - **Then the scientific review:** are the changed results physically
-     sound, and does the conclusion follow from the evidence?
+3. **Scientific review**, by the independent `isr-science-reviewer` agent on
+   Opus 5.5 (sections 5, 6a). Are the changed results physically sound, and
+   does the conclusion follow from the evidence? It includes **spot checks**:
+   the reviewer recomputes the one or two numbers the conclusion rests on,
+   from the result files that already exist, without new runs on the raw
+   data. It lists every key claim it could not confirm, and says whether a
+   full verification is needed.
+4. **Full independent verification, only when needed.** The key claims are
+   recomputed with separately written scripts, not the author's, including
+   new runs on the data where necessary. Memo 30's last section is an
+   example: it found two overstated numbers. This is done:
+   - when the scientific review flags a result as questionable, or leaves a
+     key claim unconfirmed;
+   - **always** for a change to the calibration or the absolute density scale
+     (noise injection, system temperature, the conversion to density, the
+     magic constant). An error there silently shifts every product.
 
-   Findings are fixed in the memo or the code, or answered in the record.
-4. **Review record**, completed with the benchmark report, the verification
-   and the scientific review.
-5. **Pull request and approval.** Open a pull request within the fork
+   The same reviewer continues with it, so it keeps its context.
+
+   Findings of steps 3 and 4 are fixed in the memo or the code, or answered
+   in the record.
+5. **Review record**, completed with the benchmark report, the scientific
+   review, and the verification if one was done.
+6. **Pull request and approval.** Open a pull request within the fork
    (section 7), with the record's content. Henrik approves the merge, and
    Juha too for calibration or physics, in the pull request or in person.
    Until then the branch is pushed but not merged, and it is listed in
    TODO.tex (Q8).
-6. **Merge**, as in gate A. Products made before the merge are marked out of
+7. **Merge**, as in gate A. Products made before the merge are marked out of
    date in TODO.tex.
 
 ## 4. The benchmark
@@ -203,6 +214,10 @@ or below it, and by every session when they are linked into
 `~/.claude/agents/`. A new `agents` directory is noticed only by sessions
 started after it was created.
 
+The review includes spot checks of the key numbers. A full independent
+verification follows when the review calls for it, and always for results on
+the calibration or the absolute density scale (section 3, step 4).
+
 This review is an AI's second look. It can share blind spots with the agent
 that did the work, and it does not replace Juha's judgement. Its purpose is
 to catch what can be caught before results reach him.
@@ -236,7 +251,8 @@ kept for the steps where a missed error would reach the results.
 |---|---|---|
 | tests, benchmark, bit-identity, commit identity | scripts | none |
 | code review (gate A, every change) | `isr-code-reviewer` | Claude Sonnet 5.5 (`claude-sonnet-5-5`) |
-| verification and scientific review (gate B, and memos with results) | `isr-science-reviewer` | Claude Opus 5.5 (`claude-opus-5-5`) |
+| scientific review with spot checks (gate B, and memos with results) | `isr-science-reviewer` | Claude Opus 5.5 (`claude-opus-5-5`) |
+| full verification (when flagged, and always for calibration) | `isr-science-reviewer`, continued | Claude Opus 5.5 |
 
 The agents' models are fixed by full ID in `.claude/agents/`, so they do not
 change when the short names `sonnet` and `opus` move to newer versions.
