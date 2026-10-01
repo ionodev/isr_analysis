@@ -103,7 +103,26 @@ an independent agent briefed as an experienced space physicist and ISR
 expert: `.claude/agents/isr-science-reviewer.md`, read-only (section 5 of
 REVIEW_PROCESS.md). These commits change documentation and the agent
 definition only, so neither the tool, the benchmark nor the tested commit
-changes. Trial run on Memo 37: TRIAL.
+changes. The tiering of section 6a (Sonnet 5.5 for gate A code review, Opus
+5.5 for gate B and the scientific review) was added the same day, also at
+Henrik's request.
+
+Trial run on Memo 37 (the zenith beam's pointing), on Opus 5.5, with the
+agent's brief:
+- verdict "sound with changes";
+- two errors found:
+  - the round Gaussian beam model is contradicted by a one-sided northern
+    sidelobe in the data, which biases the centre north and explains the
+    memo's unexplained drift with the SNR cut (refit without the sidelobe
+    detections: 40.53 degrees, model-free centroid 40.60-40.62, against the
+    memo's 40.57-40.80);
+  - the memo's picture of detections through MISA's sidelobes is not
+    supported by the echo strengths;
+- consequence: the aperture efficiency is 0.22-0.27, not 0.20-0.24;
+- it reproduced the memo's fits before judging them;
+- it gave five questions for the supervisor.
+
+The memo's correction is separate work.
 
 ## Decision
 
