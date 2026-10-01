@@ -104,7 +104,7 @@ def channel_pulse_ok(channel, key, tx_ant, rx_ant, zpm, mpm, min_tx_pwr):
 
 def estimate_channel_delay(dirname, channel, n_pulses=100, oversample=100,
                            max_lag_us=100.0, min_tx_pwr=400e3, t0_unix=None, verbose=True,
-                           zpm=None, mpm=None, tx_ant=None, rx_ant=None):
+                           zpm=None, mpm=None, tx_ant=None, rx_ant=None, max_search_s=2400.0):
     """
     Measure the delay of an echo channel relative to tx-h, in microseconds.
 
@@ -135,9 +135,20 @@ def estimate_channel_delay(dirname, channel, n_pulses=100, oversample=100,
     if tx_ant is None or rx_ant is None:
         tx_ant, rx_ant = mrs.get_antenna_select("%s/metadata/antenna_control_metadata" % (dirname))
 
-    # enough pulses to find n_pulses coded ones on the right antenna
-    sid = id_read.read(i0, min(i0 + 20 * n_pulses * 10000, idb[1]), "sweepid")
-    keys = sorted(sid.keys())
+    # enough pulses to find n_pulses coded ones on the right antenna. The
+    # experiment alternates the transmitting antenna in cycles of about three
+    # minutes and low-elevation scans can hold none for over 15 minutes, so the
+    # window grows, up to max_search_s, until it holds them.
+    win = 20 * n_pulses * 10000
+    while True:
+        i1 = min(i0 + win, idb[1])
+        sid = id_read.read(i0, i1, "sweepid")
+        keys = sorted(sid.keys())
+        n_own = sum(1 for k in keys if sid[k] in CODED_SWEEPIDS
+                    and channel_pulse_ok(channel, k, tx_ant, rx_ant, zpm, mpm, min_tx_pwr))
+        if n_own >= n_pulses or i1 >= idb[1] or win >= max_search_s * idsr:
+            break
+        win = min(2 * win, int(max_search_s * idsr))
 
     def measure(keys, screen):
         out = []
@@ -164,10 +175,12 @@ def estimate_channel_delay(dirname, channel, n_pulses=100, oversample=100,
     delays = measure(keys, screen=True)
 
     # the antenna control metadata and the power meter disagree in some
-    # recordings, which rejects every pulse. the delay is a property of the
-    # receiver chain, not of which antenna transmitted, so fall back to any
-    # coded pulse: cross antenna leakthrough is weaker but still well above
-    # the noise.
+    # recordings, which rejects every pulse. then fall back to any coded
+    # pulse: cross antenna leakthrough is weaker but still well above the
+    # noise. The delay is NOT the same: in the eclipse recording the leakage
+    # of a pulse sent on the other antenna arrives 1.2 us (zenith-l) and
+    # 2.3 us (misa-l) away from the own antenna's (memo 29), so the fallback
+    # is only a last resort.
     if len(delays) < 10:
         fallback = measure(keys, screen=False)
         if len(fallback) > len(delays):
