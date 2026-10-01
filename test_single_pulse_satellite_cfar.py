@@ -9,6 +9,7 @@ from single_pulse_satellite_cfar import (
     cfar_peaks,
     decimation_geometry,
     integrate_and_decimate,
+    quiet_window,
 )
 
 
@@ -127,4 +128,22 @@ def test_noise_window_ends_before_the_noise_diode():
     # noise estimate has to end before that, or it is about 1.3 (coded) and
     # 1.17 (mode 800) times too high (memo 28).
     for sweep, switch_on in [(1, 8294), (32, 8294), (300, 7814), (800, 30113)]:
-        assert MODES[sweep].last_echo <= switch_on - 5
+        mode = MODES[sweep]
+        for factor in (1, 2, 4, 8, 16):
+            offset = decimation_geometry(mode, factor)[0]
+            raw, dec = quiet_window(mode, factor, offset)
+            assert raw.stop <= switch_on - 5
+            assert raw.stop - raw.start == 500
+            # every decimated block lies inside the raw window
+            assert offset + dec.start * factor >= raw.start
+            assert offset + dec.stop * factor <= raw.stop
+            assert dec.stop - dec.start >= 500 // factor - 1
+
+
+def test_mode_table_matches_radar_timing():
+    from radar_timing import TMM
+
+    for sweep in (1, 32, 300, 800):
+        mode, ref = MODES[sweep], TMM[sweep]
+        assert (mode.tx0, mode.tx1, mode.noise1, mode.last_echo) == (
+            ref["tx0"], ref["tx1"], ref["noise1"], ref["last_echo"])
