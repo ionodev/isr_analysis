@@ -70,12 +70,17 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     The metadata change the antenna at the event that opens the next record
     cycle, but the radar changes it at the event that closes the previous
     one: in the eclipse2024 recording the first pulse on the new antenna comes
-    8.2-20.8 s before the metadata say so, after about 1.25 s without pulses
-    that starts up to 2 s before the closing event (memo 30).  So from
-    switch_guard_s seconds before the closing event until the opening event,
-    where the next cycle uses the other antenna, both functions return 0, and
-    tests like tx_ant(t)<=-0.99 reject those pulses.  switch_guard_s=None
-    gives the metadata as recorded.
+    2.3-20.8 s (median 8.6 s) before the metadata say so, after a pause of
+    about 1.25 s without pulses, and the first new pulse comes up to 2 s
+    before the closing event (memo 30).  So from switch_guard_s seconds
+    before the closing event until the opening event, where the next cycle
+    uses the other antenna, both functions return 0, and tests like
+    tx_ant(t)<=-0.99 reject those pulses.  The guard was chosen on this
+    recording.  Before the first event the functions return the first
+    recorded value, which is the antenna of the cycle in progress when the
+    recording starts, also when that first event closes a cycle.
+    switch_guard_s=None gives the metadata as recorded, and is also used,
+    with a message, when the metadata have no cycle_name for every event.
     """
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)
@@ -87,7 +92,12 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     rx_v=[]
 
     if switch_guard_s is not None:
-        names=dmd.read(b[0],b[1],"cycle_name")
+        try:
+            names=dmd.read(b[0],b[1],"cycle_name")
+        except Exception as e:
+            print("antenna select: no cycle_name metadata (%s), "
+                  "using the antenna metadata as recorded"%e)
+            switch_guard_s=None
     sid = dmd.read(b[0],b[1],"rx_antenna")    
     for keyi,key in enumerate(sid.keys()):
 
@@ -109,6 +119,13 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
             
     rx_t=n.array(rx_t)
     tx_t=n.array(tx_t)
+    if switch_guard_s is not None and not (set(tx_t)|set(rx_t))<=set(names.keys()):
+        print("antenna select: cycle_name is missing for some antenna events, "
+              "using the antenna metadata as recorded")
+        switch_guard_s=None
+    # held before the first event: the antenna of the cycle in progress
+    tx_v0=tx_v[0]
+    rx_v0=rx_v[0]
     if switch_guard_s is not None:
         tx_t,tx_v=_unknown_at_switches(tx_t,tx_v,names,switch_guard_s)
         rx_t,rx_v=_unknown_at_switches(rx_t,rx_v,names,switch_guard_s)
@@ -126,10 +143,8 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     # so times before the first event came back close to the *second* event's
     # value, which is the opposite answer whenever the antenna switched. holding
     # the first and last value is what extending the range should mean.
-    rx_sel=sint.interp1d(rx_t,rx_v,kind="previous",
-                         bounds_error=False,fill_value=(rx_v[0],rx_v[-1]))
-    tx_sel=sint.interp1d(tx_t,tx_v,kind="previous",
-                         bounds_error=False,fill_value=(tx_v[0],tx_v[-1]))
+    rx_sel=_step(rx_t,rx_v,rx_v0)
+    tx_sel=_step(tx_t,tx_v,tx_v0)
 
     if plot:
         t=n.linspace(b[0],b[1],num=100000)
@@ -147,6 +162,15 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
 
 
 
+def _step(t,v,v_before):
+    """
+    Step function of time holding the most recent value of v, v_before before
+    the first time and the last value after the last.
+    """
+    return sint.interp1d(t,v,kind="previous",
+                         bounds_error=False,fill_value=(v_before,v[-1]))
+
+
 def _unknown_at_switches(t,v,names,guard_s):
     """
     Value 0 from guard_s before each cycle-end event (an event with an empty
@@ -160,6 +184,10 @@ def _unknown_at_switches(t,v,names,guard_s):
         nm=names.get(k,b"")
         return (nm.decode() if isinstance(nm,bytes) else str(nm))==""
     sw=[i for i in range(1,len(t)) if v[i]!=v[i-1] and unnamed(t[i-1])]
+    n_change=int(n.sum(v[1:]!=v[:-1]))
+    if len(sw)<n_change:
+        print("antenna select: %d of %d antenna changes do not follow a "
+              "cycle-end event and keep the metadata's time"%(n_change-len(sw),n_change))
     v=n.copy(v)
     v[[i-1 for i in sw]]=0.0
     # the guard starts no earlier than the event before the closing one
