@@ -124,6 +124,14 @@ agent's brief:
 
 The memo's correction is separate work.
 
+Also on 2026-10-01, at Henrik's request, the gates were restructured. Every
+code change goes through gate A, which has the only code review (Sonnet 5.5).
+A change that alters the products then also goes through gate B: one
+independent verification and scientific review by `isr-science-reviewer`
+(Opus 5.5), plus approval. Gate B no longer has a second code review. The
+trial above did the verification and the scientific review together, which
+is the form gate B now takes.
+
 ## Decision
 
 Waiting for Henrik's approval, as a change to the review tooling.

@@ -1,6 +1,6 @@
 ---
 name: isr-code-reviewer
-description: Independent code reviewer for gate A of REVIEW_PROCESS.md (output-neutral changes) in the Millstone Hill ISR pipeline. Reviews a branch's diff for bugs and against the checklist, and reports findings with evidence. Read-only. For gate B, use the same agent with the model overridden to claude-opus-5-5.
+description: Independent code reviewer for gate A of REVIEW_PROCESS.md, the one code review every change to the Millstone Hill ISR pipeline gets. Reviews a branch's diff for bugs and against the checklist, and reports findings with evidence. Read-only.
 tools: Read, Grep, Glob, Bash
 model: claude-sonnet-5-5
 ---
@@ -45,7 +45,7 @@ The checklist of REVIEW_PROCESS.md, section 6:
     (Memos 27, 28, 30).
 - **Defaults:** does any default change, in code, in configuration, or
   through a code path the benchmark does not cover (REVIEW_PROCESS.md,
-  section 1)? If so, it is gate B, and you say so.
+  section 1)? If so, the change also needs gate B, and you say so.
 - **Tests:** do they test the change, and would they fail without it? Are any
   skipped?
 - **Claims:** does every number in the commit messages or the record come
@@ -57,8 +57,8 @@ The checklist of REVIEW_PROCESS.md, section 6:
 
 ## Report
 
-1. **Verdict:** passes gate A / passes after fixes / is gate B, not gate A /
-   blocked.
+1. **Verdict:** passes / passes after fixes / blocked. Also say whether it
+   looks output-neutral, or must also go through gate B.
 2. **Findings, most severe first.** For each: file and line, what is wrong,
    the scenario, and a suggested fix. Separate real bugs from minor points.
 3. **What you checked and found fine**, briefly.
