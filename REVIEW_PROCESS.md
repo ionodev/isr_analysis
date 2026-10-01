@@ -67,8 +67,8 @@ someone has to confirm that it does.
    repeated, unless those commits change documentation only.
 3. **Independent code review.** A reviewer who did not write the change reads
    the diff (`git diff main...<branch>`) against the checklist in section 6.
-   For Claude this means a fresh session or a subagent with no part in the
-   work, for example `/code-review` at high effort. Findings are fixed, or
+   For Claude this means the `isr-code-reviewer` agent (Sonnet 5.5,
+   section 6a), which has no part in the work. Findings are fixed, or
    answered in the record, and the reviewer checks the fixes.
 4. **Review record.** Write `review/records/<YYYY-MM-DD>-<branch>.md` from
    `review/records/TEMPLATE.md` (with any `/` in the branch name replaced by
@@ -90,10 +90,11 @@ someone has to confirm that it does.
 3. **Independent verification of the scientific claim.** The claim that the
    fix is right (for example "the metadata are 8.6 s late", or "the
    injection window catches the spike") is rechecked with separately written
-   scripts, not the author's. For Claude, a fresh session or subagent does
-   this. Memo 30's last section is an example: it found two overstated
+   scripts, not the author's. For Claude, a fresh session or subagent on
+   Opus 5.5 does this (section 6a). Memo 30's last section is an example: it found two overstated
    numbers.
-4. **Independent code review**, as in gate A.
+4. **Independent code review**, as in gate A, but with the
+   `isr-code-reviewer` agent on Opus 5.5 (section 6a).
 5. **Memo.** A memo says what changed, why, by how much, and what was not
    checked.
 6. **Scientific review** (section 5) of the memo and the benchmark report:
@@ -170,7 +171,7 @@ memo that reports results (not only those tied to a code change), before the
 memo goes to Juha.
 
 For Claude, the reviewer is the agent `isr-science-reviewer`
-(`.claude/agents/isr-science-reviewer.md`). It is briefed as an experienced
+(`.claude/agents/isr-science-reviewer.md`, on Opus 5.5). It is briefed as an experienced
 space physicist and ISR expert, it is read-only, and it may read the
 literature on the web. It checks:
 - physical plausibility, and the eclipse response against earlier eclipse
@@ -185,9 +186,11 @@ literature on the web. It checks:
 
 It reports a verdict, findings with evidence, the checks it made, and
 questions for the supervisor. To run it, ask Claude to "use the
-isr-science-reviewer agent on Memo N" (or on a branch's record) from a
-session started in the repository, or one with the agent installed in
-`~/.claude/agents/`.
+isr-science-reviewer agent on Memo N" (or on a branch's record). The
+agents in `.claude/agents/` are found by sessions started in the repository
+or below it, and by every session when they are linked into
+`~/.claude/agents/`. A new `agents` directory is noticed only by sessions
+started after it was created.
 
 This review is an AI's second look. It can share blind spots with the agent
 that did the work, and it does not replace Juha's judgement. Its purpose is
@@ -213,6 +216,32 @@ The reviewer checks at least:
 - **Commit identity:** `ionodev <44322493+ionodev@users.noreply.github.com>`,
   no private address, no attribution trailers.
 
+## 6a. Which model does which review
+
+The reviews are done by AI agents, and they cost usage. The best model is
+kept for the steps where a missed error would reach the results.
+
+| Step | Who | Model |
+|---|---|---|
+| tests, benchmark, bit-identity, commit identity | scripts | none |
+| gate A: code review | `isr-code-reviewer` | Claude Sonnet 5.5 (`claude-sonnet-5-5`, the agent's default) |
+| gate B: independent verification of the claim | a fresh agent | Claude Opus 5.5 (`claude-opus-5-5`) |
+| gate B: code review | `isr-code-reviewer` | Claude Opus 5.5 (override the agent's model) |
+| scientific review (gate B, and memos with results) | `isr-science-reviewer` | Claude Opus 5.5 (the agent's default) |
+
+The agents' models are fixed by full ID in `.claude/agents/`, so they do not
+change when the short names `sonnet` and `opus` move to newer versions.
+Change them there, deliberately, when a newer model is adopted.
+
+To keep the usage down:
+- continue the same reviewer for follow-up rounds rather than starting a
+  fresh one, since it keeps its context;
+- give it the diff, the record and the memo it needs, not the whole project.
+
+Sonnet 5.5 costs half as much per token as Opus 5.5 (2 and 10 dollars per
+million input and output tokens, against 4 and 20; Anthropic's list prices,
+September 2026).
+
 ## 7. Pull requests
 
 The review record in the branch is the durable record of the review. Gate-B
@@ -234,8 +263,8 @@ merge with a merge commit, either locally (then push) or with
 ## 8. Autonomous runs
 
 Autonomous Claude runs (see `~/isr_project/AUTONOMOUS_RUNS.md`) follow the
-same gates. They may merge gate-A changes themselves, with a subagent as the
-independent reviewer. They push gate-B branches without merging them, with
+same gates. They may merge gate-A changes themselves, with the
+`isr-code-reviewer` agent as the independent reviewer. They push gate-B branches without merging them, with
 the benchmark report and the verification ready in the record, and they may
 open the pull request.
 
