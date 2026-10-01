@@ -11,6 +11,8 @@ gate B the changes and their explanation.
 
 **Independent verification (gate B):**
 
+**Scientific review (gate B):** verdict, findings, and what was done.
+
 **Code review:** reviewer, findings, and what was done.
 
 **Review record:** `review/records/<YYYY-MM-DD>-<branch>.md`

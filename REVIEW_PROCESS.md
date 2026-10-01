@@ -66,7 +66,7 @@ someone has to confirm that it does.
    gives the tested commit. If commits are added after the run, it is
    repeated, unless those commits change documentation only.
 3. **Independent code review.** A reviewer who did not write the change reads
-   the diff (`git diff main...<branch>`) against the checklist in section 5.
+   the diff (`git diff main...<branch>`) against the checklist in section 6.
    For Claude this means a fresh session or a subagent with no part in the
    work, for example `/code-review` at high effort. Findings are fixed, or
    answered in the record, and the reviewer checks the fixes.
@@ -96,14 +96,18 @@ someone has to confirm that it does.
 4. **Independent code review**, as in gate A.
 5. **Memo.** A memo says what changed, why, by how much, and what was not
    checked.
-6. **Review record**, as in gate A, with the benchmark report and the
-   verification attached.
-7. **Pull request and approval.** Open a pull request within the fork
-   (section 6), with the record's content. Henrik approves the merge, and
+6. **Scientific review** (section 5) of the memo and the benchmark report:
+   are the changed results physically sound, and does the conclusion follow
+   from the evidence? Findings are fixed in the memo or the code, or answered
+   in the record.
+7. **Review record**, as in gate A, with the benchmark report, the
+   verification and the scientific review attached.
+8. **Pull request and approval.** Open a pull request within the fork
+   (section 7), with the record's content. Henrik approves the merge, and
    Juha too for calibration or physics, in the pull request or in person.
    Until then the branch is pushed but not merged, and it is listed in
    TODO.tex (Q8).
-8. **Merge**, as in gate A. Products made before the merge are marked
+9. **Merge**, as in gate A. Products made before the merge are marked
    out of date in TODO.tex.
 
 ## 4. The benchmark
@@ -157,7 +161,39 @@ are cached.
 Add a period to the benchmark when a new problem is found. This changes the
 key, so every commit is run afresh.
 
-## 5. Review checklist
+## 5. Scientific review
+
+Correct code can still give wrong science, and an author tends to read their
+own results kindly. So results get a scientific review by an independent
+reviewer who did not do the work. This is required for gate B, and for every
+memo that reports results (not only those tied to a code change), before the
+memo goes to Juha.
+
+For Claude, the reviewer is the agent `isr-science-reviewer`
+(`.claude/agents/isr-science-reviewer.md`). It is briefed as an experienced
+space physicist and ISR expert, it is read-only, and it may read the
+literature on the web. It checks:
+- physical plausibility, and the eclipse response against earlier eclipse
+  studies;
+- the assumptions of ISR theory, and fits on table edges;
+- calibration;
+- whether the uncertainties match the scatter;
+- whether the claims follow from the evidence;
+- alternative explanations;
+- comparison with independent sources (IRI, ionosondes, GNSS TEC, published
+  results).
+
+It reports a verdict, findings with evidence, the checks it made, and
+questions for the supervisor. To run it, ask Claude to "use the
+isr-science-reviewer agent on Memo N" (or on a branch's record) from a
+session started in the repository, or one with the agent installed in
+`~/.claude/agents/`.
+
+This review is an AI's second look. It can share blind spots with the agent
+that did the work, and it does not replace Juha's judgement. Its purpose is
+to catch what can be caught before results reach him.
+
+## 6. Code review checklist
 
 The reviewer checks at least:
 
@@ -177,7 +213,7 @@ The reviewer checks at least:
 - **Commit identity:** `ionodev <44322493+ionodev@users.noreply.github.com>`,
   no private address, no attribution trailers.
 
-## 6. Pull requests
+## 7. Pull requests
 
 The review record in the branch is the durable record of the review. Gate-B
 changes also get a pull request, so that Henrik and Juha can read and approve
@@ -195,10 +231,14 @@ The description follows `.github/pull_request_template.md`. After approval,
 merge with a merge commit, either locally (then push) or with
 `gh pr merge <number> --merge --repo ionodev/isr_analysis`.
 
-## 7. Autonomous runs
+## 8. Autonomous runs
 
 Autonomous Claude runs (see `~/isr_project/AUTONOMOUS_RUNS.md`) follow the
 same gates. They may merge gate-A changes themselves, with a subagent as the
 independent reviewer. They push gate-B branches without merging them, with
 the benchmark report and the verification ready in the record, and they may
 open the pull request.
+
+They also run the scientific review (section 5) on every memo they write
+that reports results, with the `isr-science-reviewer` agent. They fix what
+it finds, or list it in the report as open.

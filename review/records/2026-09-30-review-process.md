@@ -95,6 +95,16 @@ The review also found two existing pipeline bugs, now in TODO.tex:
   `fit-lpi-last-group`);
 - fit_lp never uses the first range–Doppler file of a run.
 
+## Added on 2026-10-01: the scientific review
+
+At Henrik's request, the process now also requires a scientific review of
+results, for gate B and for every memo that reports results. It is done by
+an independent agent briefed as an experienced space physicist and ISR
+expert: `.claude/agents/isr-science-reviewer.md`, read-only (section 5 of
+REVIEW_PROCESS.md). These commits change documentation and the agent
+definition only, so neither the tool, the benchmark nor the tested commit
+changes. Trial run on Memo 37: TRIAL.
+
 ## Decision
 
 Waiting for Henrik's approval, as a change to the review tooling.

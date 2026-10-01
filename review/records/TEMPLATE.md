@@ -32,6 +32,11 @@ expected.
 
 What the verifier recomputed, with which scripts, and the result.
 
+## Scientific review (gate B, and memos with results)
+
+Reviewer (`isr-science-reviewer`), its verdict, its findings and what was
+done about each, and its questions for the supervisor.
+
 ## Code review
 
 Findings, and what was done about each: fixed in `<sha>`, or answered.
