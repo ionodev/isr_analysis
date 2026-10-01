@@ -634,6 +634,10 @@ def fit_lpifiles(dirn="lpi_f",
 
             this_fl.append(f)
         h.close()
+    # the loop above appends a set only when the next one starts, so the last
+    # set of files would never be fitted
+    if len(this_fl) > 0:
+        int_files.append(this_fl)
         
     # above this, don't use ground clutter removal
     # use removal below this range
