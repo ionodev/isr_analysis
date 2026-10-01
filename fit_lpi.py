@@ -813,8 +813,13 @@ def fit_lpifiles(dirn="lpi_f",
                 if ra > 0:
 
                     for ri in range(acf.shape[0]):
-                        avg_acf[ri,:]=n.nansum(range_weight[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:]*acf_orig[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:],axis=0)/n.nansum(range_weight[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:],axis=0)
-                        avg_var[ri,:]=1/(n.nansum(1/var_orig[(ri-ra):n.min((acf.shape[0],(ri+ra))),:],axis=0))
+                        # ra gates either side, 2 ra + 1 in all as range_avg_window_km
+                        # states; the variance slice also needs the max(0, .): a
+                        # negative start is an empty slice, and 1/0 an infinite
+                        # variance in the lowest ra gates
+                        r0,r1=n.max((0,(ri-ra))),n.min((acf.shape[0],(ri+ra+1)))
+                        avg_acf[ri,:]=n.nansum(range_weight[r0:r1,:]*acf_orig[r0:r1,:],axis=0)/n.nansum(range_weight[r0:r1,:],axis=0)
+                        avg_var[ri,:]=1/(n.nansum(1/var_orig[r0:r1,:],axis=0))
 
                 acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]
                 var[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_var[range_limit_idx[rai]:range_limit_idx[rai+1],:]
