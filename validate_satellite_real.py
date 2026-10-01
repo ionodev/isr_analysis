@@ -157,9 +157,12 @@ def plan(out, kind):
     return meta
 
 
-def all_detections(meta, doppler_override=None):
-    """Every catalogued echo of the period, as a production run would take them."""
-    det = satcol.CatalogueDetections(SAT_MD, CHANNEL, meta["delay_us"])
+def all_detections(meta, doppler_override=None, refine=False):
+    """Every catalogued echo of the period, as a production run would take them;
+    refine: with the delays refined below the catalogue's grid"""
+    from raw_reader import RawReader
+    det = satcol.CatalogueDetections(SAT_MD, CHANNEL, meta["delay_us"],
+                                     refine_reader=RawReader("%s/rf_data/" % DATA) if refine else None)
     if doppler_override is None:
         return det
 
@@ -354,6 +357,9 @@ def main():
                                  satellite_template="average", precise_weights=True),
         "fit_dop0_avg_p": lambda: run("fit_dop0_avg_p", out, ai, sat=all_detections(meta, 0.0), rejection=False,
                                       satellite_template="average", precise_weights=True),
+        # with the catalogue's delays refined below its grid
+        "fit_avg_p_refined": lambda: run("fit_avg_p_refined", out, ai, sat=all_detections(meta, refine=True),
+                                         rejection=False, satellite_template="average", precise_weights=True),
     }
     for d in (-2, -1, 1, 2):
         runs["neighbour%+d" % d] = (lambda d=d: run_masked("neighbour%+d" % d, out, ai + d,
@@ -363,8 +369,8 @@ def main():
             runs[name]()
     if args.report:
         dop0 = {"fit": "fit_dop0", "fit_eq": "fit_dop0_eq", "fit_avg": "fit_dop0_avg",
-                "fit_avg_p": "fit_dop0_avg_p"}[args.fit]
-        p_ = args.fit.endswith("_p")
+                "fit_avg_p": "fit_dop0_avg_p", "fit_avg_p_refined": "fit_dop0_avg_p"}[args.fit]
+        p_ = args.fit.endswith("_p") or args.fit.endswith("_p_refined")
         report(out, meta, fit=args.fit, dop0=dop0, nohandling="nohandling_p" if p_ else "nohandling",
                current="current_p" if p_ else "current")
 
