@@ -9,9 +9,9 @@ same merge (REVIEW_PROCESS.md, gate A step 4). Under the date of the merge
 and the right heading, write one bullet with:
 - what changed and why, in a sentence or two;
 - the effect on the products, if any;
-- the memo, the review record, and the branch's tip commit (the entry is
-  written before the merge, so it cannot name the merge commit; find that
-  with `git log --merges --first-parent main`).
+- the memo, the review record, and the last commit of the change itself,
+  before the commit that adds the entry (the entry cannot name the merge
+  commit; find that with `git log --merges --first-parent main`).
 
 The headings are **Fixed** (a defect corrected), **Added** (new capability or
 tool), **Changed** (behaviour or defaults changed on purpose) and **Process**
@@ -67,8 +67,8 @@ approvals are from 2 October 2026; the calibration fix also needs Juha's.
   Memo 29. Approved by Henrik, on a condition the fix meets.
 - **`fit-lpi-range-avg`** (b093f5c): the range average gave the lowest
   gates infinite variance and averaged 2r_a gates, off centre by half a
-  gate, instead of 2r_a+1. Fit parameters move by a median of 0.2-0.7 σ
-  below 700 km. Item 16b. Approved by Henrik.
+  gate, instead of 2r_a+1. In a test before the benchmark, fit parameters
+  moved by a median of 0.2-0.7 σ below 700 km. Item 16b. Approved by Henrik.
 - **`fit-lpi-last-group`** (26b726e): `fit_lpifiles` never fitted the last
   group of files of a run (the last `max_dt`). Memo 35. Waiting for
   Henrik's decision.
@@ -138,9 +138,10 @@ NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
   mode 800 the outside line interference survived in that gate at up to
   5e4 σ, and its re-detection blanked the 16 gates below it over and over
   (ebe3be7).
-- `avg_type="median"` in the range-Doppler averaging works; its output is
-  0.688 of the outlier average, as expected (ln 2 = 0.693) for exponentially
-  distributed power (385095b).
+- `avg_type="median"` in the range-Doppler averaging works. The median is
+  not an estimate of the mean power: in mode 300 noise its level is 0.688 of
+  the outlier average (ln 2 = 0.693 for exponentially distributed power), so
+  absolute levels differ while ratios such as the SNR do not (385095b).
 - The corner weights of the ion-line interpolation: the interpolated
   spectra were wrong by up to 24 %, now below 2.5 % (bcaaaee).
 - `fit_acf_ts` evaluates the model and Jacobian at the fitted composition,
@@ -184,8 +185,9 @@ NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
 ### Fixed
 - The `lpi` step could not run at all (e981091).
 - The antenna selection is interpolated as the step function it is; linear
-  interpolation swept through zero at every switch and dropped pulses
-  (0330e30).
+  interpolation swept through zero at every switch and dropped pulses (93.1 %
+  of sampled pulses accepted instead of 96.3 %; about 3 % more pulses on
+  reanalysis, all on misa-l) (0330e30).
 - `acfs_var` is read as the complex variance it is, and `var_scale` is
   kept; every uncertainty was overstated by sqrt(2) (e2cfc6b).
 - Moved off `read_vector_c81d`, which digital_rf 3 removes (c75fd76).
@@ -207,7 +209,9 @@ NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
 ## 2026-09-16
 
 ### Fixed
-- The plasma parameter uncertainties repaired and completed (95aba03), and
+- The plasma parameter uncertainties repaired and completed: all of them
+  shrink, dvi by 43 %, and the fitted parameters do not change (95aba03),
+  and
   carried into the revived `fit_lp.py` (0ebc5db).
 
 ### Changed

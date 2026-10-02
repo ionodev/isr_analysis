@@ -89,15 +89,19 @@ someone has to confirm that it does.
    (with any `/` in the branch name replaced by `-`) and commit it on the
    branch. Add the change to `CHANGELOG.md` on the branch: under "Waiting for
    gate B" for a product-changing change, or under the merge date otherwise,
-   citing the branch's tip commit (the file's header says how).
+   citing the last commit of the change itself (the file's header says
+   how).
    Documentation-only merges, which need no gate, still add a Process
    entry.
 5. **Merge, if output-neutral.** Right before merging, check that `main` has
    not moved since the benchmark: `git merge-base --is-ancestor main <tested
    commit>`. If it has, merge `main` into the branch and repeat the
-   benchmark, unless the new commits on `main` touch only documentation
-   (`CHANGELOG.md`, other `.md` files, review records): then merging `main`
-   is enough. Then merge into `main` with a merge commit that names the
+   benchmark, unless the new commits on `main` change only Markdown or LaTeX
+   files: then merging `main` is enough, and the check becomes that the
+   difference from the tested commit to the branch tip is in such files only
+   (`git diff --name-only <tested commit> <branch>`). The agent files in
+   `.claude/agents/` are Markdown too; they change the reviews, not the
+   outputs. Then merge into `main` with a merge commit that names the
    record, and push `main` and the branch. A product-changing change goes on
    to gate B instead.
 
