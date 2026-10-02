@@ -9,13 +9,17 @@ same merge (REVIEW_PROCESS.md, gate A step 4). Under the date of the merge
 and the right heading, write one bullet with:
 - what changed and why, in a sentence or two;
 - the effect on the products, if any;
-- the memo, the review record, and the commit or merge.
+- the memo, the review record, and the branch's tip commit (the entry is
+  written before the merge, so it cannot name the merge commit; find that
+  with `git log --merges --first-parent main`).
 
 The headings are **Fixed** (a defect corrected), **Added** (new capability or
 tool), **Changed** (behaviour or defaults changed on purpose) and **Process**
-(review, documentation, repository). A product-changing fix goes under
-"Waiting for gate B" while it is on its branch, and moves to its merge date
-when it is merged.
+(review, documentation, repository). Documentation-only merges get a
+Process entry too. A product-changing fix goes under "Waiting for gate B"
+while it is on its branch, and moves to its merge date, in a commit on the
+branch, before it is merged. Branches that edit this file at the same time
+conflict here; resolve by keeping all the entries.
 
 ## Waiting for gate B (on branches, not merged)
 
@@ -36,9 +40,11 @@ approvals are from 2 October 2026; the calibration fix also needs Juha's.
   started 13 µs before the noise diode switches on and caught its overshoot,
   so MISA's mode-300 T_sys was about 26 % too low and its range-Doppler
   densities 1.29-1.37 times too low. The window now starts at 7830 µs.
-  Memo 27; the site's own T_sys log of 8 April agrees with the fix. A
-  calibration change: approved by Henrik, needs Juha's approval and a full
-  verification.
+  In the inversion, MISA's T_sys moves by 5.7-8.1 %; zenith-l by about
+  1 % or less. Memo 27. The site's own T_sys log of 8 April preliminarily
+  agrees (site/ours for MISA's range-Doppler T_sys: 1.27). Open: start the
+  window at 7830 or at about 7850 µs. A calibration change: approved by
+  Henrik, needs Juha's approval and a full verification.
 - **`antenna-switch-gap`** (28e658f): the antenna metadata record a change
   of antenna 2.3-20.8 s (median 8.6 s) after the radar makes it, so each
   channel took in a median of 190-244 pulses per change that were sent on
@@ -54,17 +60,33 @@ approvals are from 2 October 2026; the calibration fix also needs Juha's.
 - **`tx-delay-own-antenna`** (979c1b7): the channel-delay estimator looked
   only 20 s ahead for pulses on the receiver's own antenna before falling
   back to the other antenna's, whose leakage arrives 1.2-2.3 µs away. It now
-  searches up to 40 minutes first. Memo 29. Approved by Henrik.
+  searches up to 40 minutes first. On the benchmark, zenith-l's delay moves
+  from 11.88 to 10.62 µs, shifting every zenith-l range-Doppler spectrum by
+  1.3 samples (195 m); single gates changing by up to 12-23 σ, and the
+  0.1 µs against an independent 10.72 µs, are not yet explained (for gate B).
+  Memo 29. Approved by Henrik, on a condition the fix meets.
 - **`fit-lpi-range-avg`** (b093f5c): the range average gave the lowest
   gates infinite variance and averaged 2r_a gates, off centre by half a
-  gate, instead of 2r_a+1. Item 16b. Approved by Henrik.
+  gate, instead of 2r_a+1. Fit parameters move by a median of 0.2-0.7 σ
+  below 700 km. Item 16b. Approved by Henrik.
 - **`fit-lpi-last-group`** (26b726e): `fit_lpifiles` never fitted the last
   group of files of a run (the last `max_dt`). Memo 35. Waiting for
   Henrik's decision.
 
 All seven together are on `integration-all-fixes` (3fbc1ef); their combined
 benchmark is the sum of the single branches, except at one antenna switch,
-where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
+where `antenna-switch-gap` needs `lpi-unconstrained-gates`. **Merge order:**
+`lpi-unconstrained-gates`, `antenna-switch-gap`, `fit-lpi-range-avg` and
+`fit-lpi-last-group` go in together, since each of the other three alone
+leaves fits with no lags (on its own the new misa-l last-group fit is all
+NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
+
+## 2026-10-02
+
+### Process
+- This changelog, and the rule that every merge adds its entry
+  (REVIEW_PROCESS.md, gate A step 4; the record and pull-request templates).
+  Branch `changelog`; the process change needs Henrik's approval.
 
 ## 2026-10-01
 
@@ -89,14 +111,15 @@ where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
 
 ### Added
 - `satellite_columns`: optional refinement of the catalogue's delays below
-  its 8-sample grid (`refine_delay`, off by default): 3-5 times more precise
+  its 8-sample grid (`refine_delay`, used when `CatalogueDetections` is given
+  a `refine_reader`; off by default): 3-5 times more precise
   for the coded pulses; the plasma is unchanged. Memo 29 (9c3817b).
 - `validate_satellite_hours`: the satellite columns over whole hours on both
   receivers. Memo 29 (2b968f5, merge b3c4879).
 - `validate_impulses_rd`: power-line impulses in the mode 300 range-Doppler
   path; they add noise, not bias. Memo 26 (ba37540).
 - `millstone_radar_state`: MISA's pointing per pulse, and the zenith beam's
-  pointing from satellite matches (70429cd).
+  pointing from satellite matches. Memo 7 (70429cd).
 
 ### Process
 - README: a short overview of the project, the data and the pipeline
@@ -111,19 +134,28 @@ where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
   peak at 18 kHz), and with it the injection gain α and the density scale.
   Memo 18 (1964d01; test 2bed00e). Products made before this need the
   correction in `compare_tsys_sky.py`, or regeneration.
-- The range-Doppler outlier blanking now reaches the last range gate
+- The range-Doppler outlier blanking now reaches the last range gate. In
+  mode 800 the outside line interference survived in that gate at up to
+  5e4 σ, and its re-detection blanked the 16 gates below it over and over
   (ebe3be7).
-- `avg_type="median"` in the range-Doppler averaging works (385095b).
-- The corner weights of the ion-line interpolation (bcaaaee).
+- `avg_type="median"` in the range-Doppler averaging works; its output is
+  0.688 of the outlier average, as expected (ln 2 = 0.693) for exponentially
+  distributed power (385095b).
+- The corner weights of the ion-line interpolation: the interpolated
+  spectra were wrong by up to 24 %, now below 2.5 % (bcaaaee).
 - `fit_acf_ts` evaluates the model and Jacobian at the fitted composition,
-  and keeps it (b58f1f9).
+  and keeps it: in the commit's test, 84 of 84 topside gates are fitted,
+  where 50-59 were (b58f1f9).
 
 ### Added
 - Impulse blanking of power-line sparks (`blank_impulses`), off by default:
   impulses locked to the 60 Hz mains inflate the ACF error variance by up to
   32 %. Memo 21 (88940ed, merge 9fc6540).
-- `raw_reader`: whole-second reads and a cached pulse index, 30-40 times
-  faster than reading pulse by pulse. Memo 19 (10a46c3).
+- `raw_reader`: whole-second reads and a cached pulse index, 25-30 times
+  faster than reading pulse by pulse in one process, up to about 40 times
+  with 4-16 readers. `outlier_lpi.lpi_files` now reads through it by
+  default (`fast_read=True`); the output is bit-identical, and the inversion
+  gains little, as reading is about 1 % of its time. Memo 19 (10a46c3).
 - `validate_rfi_lpi` and `validate_rfi_rd800`: the effect of the outside
   transmitter's line interference on the LPI and on the mode 800
   range-Doppler path. Memo 20 (a284fbb, e635bba).
@@ -138,7 +170,7 @@ where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
 
 ### Added
 - Satellite echoes as extra unknowns ("columns") in the lag profile
-  inversion, with the injection and real-transit tests. Memos 14-16
+  inversion, with the injection and real-transit tests. Memos 12, 14-16
   (a0ae342, 6f5ff1a, merge 5301cc2).
 - The system temperature compared against a 440 MHz sky model
   (`compare_tsys_sky.py`). Memo 7 (9ab0f82, merge decea5e).
@@ -154,13 +186,14 @@ where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
 - The antenna selection is interpolated as the step function it is; linear
   interpolation swept through zero at every switch and dropped pulses
   (0330e30).
-- `acfs_var` is read as the complex variance it is, and `var_scale` is kept
-  (e2cfc6b).
+- `acfs_var` is read as the complex variance it is, and `var_scale` is
+  kept; every uncertainty was overstated by sqrt(2) (e2cfc6b).
 - Moved off `read_vector_c81d`, which digital_rf 3 removes (c75fd76).
 
 ### Changed
 - The space object cut is a significance, not an absolute number (61c79aa),
-  and its blanking width is derived instead of hard-coded (66cee68).
+  and its blanking width is derived from the gate and pulse length instead
+  of hard-coded at ±17 gates: mode 300 ±16, mode 800 ±67 (66cee68).
 - One transmit timing table instead of four copies (9a01db0); the code says
   what it does when a pulse code is not in the table (e943c6e).
 - The design matrix of the lag profile inversion is scaled once (7657505).
@@ -179,7 +212,8 @@ where `antenna-switch-gap` needs `lpi-unconstrained-gates`.
 
 ### Changed
 - The delay between `tx-h` and each echo channel is measured instead of
-  hard-coded (ffe0e35).
+  hard-coded: 12.34 µs (misa-l) and 11.88 µs (zenith-l) in the eclipse
+  recording (ffe0e35).
 
 ### Added
 - Merged from `jvierine/isr_analysis`: the MPI single-pulse satellite CFAR
