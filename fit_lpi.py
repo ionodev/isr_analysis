@@ -594,6 +594,36 @@ def range_average(acf, var, rgs, ra):
     return(avg_acf,avg_var)
 
 
+def group_by_time(t, max_dt):
+    """
+    Split the start times t (sorted) of the LPI files into fit windows. A
+    window opens at the first file not yet in one and takes the files that
+    start less than max_dt after it. Returns a list of index lists, the last,
+    possibly short, window included.
+    """
+    groups=[]
+    for i,ti in enumerate(t):
+        if len(groups)==0 or not (t[groups[-1][0]] <= ti < t[groups[-1][0]]+max_dt):
+            groups.append([])
+        groups[-1].append(i)
+    return(groups)
+
+
+def fit_is_current(fname, n_files):
+    """
+    True if the fit fname exists and holds at least n_files LPI files. A
+    window that has grown since (the last window of an earlier incremental
+    run), or a fit written before the count was stored, is fitted again.
+    """
+    if not os.path.exists(fname):
+        return(False)
+    try:
+        with h5py.File(fname,"r") as h:
+            return("n_lpi_files" in h and int(h["n_lpi_files"][()]) >= n_files)
+    except OSError:
+        return(False)
+
+
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
 def fit_lpifiles(dirn="lpi_f",
                  channel="misa-l",
@@ -649,28 +679,13 @@ def fit_lpifiles(dirn="lpi_f",
 
     #n_ints=int(n.floor(len(fl)/n_avg))
 
-    # look for sets of files that lie within integration period
-    int_files=[]
-    t_start=t0
-    this_fl=[]
-    for fi,f in enumerate(fl):
-        h=h5py.File(f,"r")
-        ft0=h["i0"][()]
-
-        if (ft0 >= t_start) and (ft0 < (t_start+max_dt)):
-            this_fl.append(f)
-        else:
-            int_files.append(this_fl)
-#            print(this_fl)
-            t_start=ft0
-            this_fl=[]
-
-            this_fl.append(f)
-        h.close()
-    # the loop above appends a set only when the next one starts, so the last
-    # set of files would never be fitted
-    if len(this_fl) > 0:
-        int_files.append(this_fl)
+    # look for sets of files that lie within integration period. the last
+    # set is fitted too (it used to be dropped)
+    ft0s=[]
+    for f in fl:
+        with h5py.File(f,"r") as h:
+            ft0s.append(h["i0"][()])
+    int_files=[[fl[i] for i in g] for g in group_by_time(ft0s,max_dt)]
         
     # above this, don't use ground clutter removal
     # use removal below this range
@@ -715,7 +730,8 @@ def fit_lpifiles(dirn="lpi_f",
         # still short by one file length.
         t1=h["t1"][()] if "t1" in h else h["i0"][()]
         h.close()
-        if os.path.exists("%s/pp-%d.h5"%(output_dir,t0)) and reanalyze==False:
+        # an incremental run refits a window that has gained files since
+        if reanalyze==False and fit_is_current("%s/pp-%d.h5"%(output_dir,t0),n_avg):
             print("already exists")
             continue
             
@@ -999,6 +1015,9 @@ def fit_lpifiles(dirn="lpi_f",
         ho["rgs"]=rgs
         ho["t0"]=t0
         ho["t1"]=t1
+        # how much data the fit holds; t1-t0 does not say (gaps). the LPI
+        # files store no pulse count
+        ho["n_lpi_files"]=n_avg
         ho["az"]=mean_az
         ho["el"]=mean_el
 
