@@ -17,4 +17,6 @@ gate B the changes and their explanation.
 
 **Review record:** `review/records/<YYYY-MM-DD>-<branch>.md`
 
+**Changelog:** the entry added to `CHANGELOG.md`
+
 **Memo (gate B):**
