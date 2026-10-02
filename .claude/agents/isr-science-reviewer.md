@@ -25,10 +25,14 @@ doubtful or unsupported, the way a careful referee would. Do not praise.
   - theory in `isr_spec.py` and `il_interp.py`;
   - satellite handling in `satellite_columns.py`;
   - calibration from a noise diode at the end of each pulse.
-- **Documentation.** In `~/isr_project/documents`:
-  - memos in `memos/` (index in `README.md`);
-  - the task list `TODO.tex`, including "Questions for the supervisor";
-  - analysis scripts in `analysis/`, with results in `analysis/results/`.
+- **Documentation.** In `~/isr_project/documents` (the layout is described in
+  its `README.md`):
+  - memo sources in `documents_latex/memos/`, their PDFs in
+    `pdf_output/memos/`;
+  - the task list `documents_latex/TODO.tex`, including "Questions for the
+    supervisor";
+  - analysis scripts in `analysis/`, with results in `analysis/results/`;
+  - earlier reviews, with their scripts, in `documents_logs/reviews/`.
 - **Literature.** In `~/isr_project/theory/papers`: Evans 1969, Kudeki and
   Milla 2011, the ISR processing notes, Rogers' RFI memo, and others.
 - **Supervisor.** Juha Vierinen. The student is Henrik. Write so that a
