@@ -26,7 +26,8 @@ conflict here; resolve by keeping all the entries.
 Each has passed gate A (code review, tests, benchmark; record in
 `review/records/2026-10-02-<branch>.md` on the branch). All change the
 products, so all need gate B: a scientific review, then the merge. Henrik's
-approvals are from 2 October 2026; the calibration fix also needs Juha's.
+approvals are from 2 October 2026 (Henrik decides on the code changes, and
+which of them go to Juha for review).
 
 ### Fixed
 
@@ -44,7 +45,7 @@ approvals are from 2 October 2026; the calibration fix also needs Juha's.
   1 % or less. Memo 27. The site's own T_sys log of 8 April preliminarily
   agrees (site/ours for MISA's range-Doppler T_sys: 1.27). Open: start the
   window at 7830 or at about 7850 µs. A calibration change: approved by
-  Henrik, needs Juha's approval and a full verification.
+  Henrik; as a calibration change it gets a full verification in gate B.
 - **`antenna-switch-gap`** (28e658f): the antenna metadata record a change
   of antenna 2.3-20.8 s (median 8.6 s) after the radar makes it, so each
   channel took in a median of 190-244 pulses per change that were sent on

@@ -17,8 +17,9 @@ whether the change also needs **gate B**:
   default.
 - **Some output differs** (the change is *product-changing*): gate B follows.
   Gate B is a scientific review of the new results, a full independent
-  verification when that review calls for it, and Henrik's approval, and
-  Juha's too for calibration or physics.
+  verification when that review calls for it, and Henrik's approval. Henrik
+  is responsible for the code and decides which changes also go to Juha for
+  review.
   Examples: bug fixes that change numbers, new defaults, calibration changes.
 
 Gate B does not repeat the code review. It checks what gate A cannot: whether
@@ -137,8 +138,9 @@ someone has to confirm that it does.
 5. **Review record**, completed with the benchmark report, the scientific
    review, and the verification if one was done.
 6. **Pull request and approval.** Open a pull request within the fork
-   (section 7), with the record's content. Henrik approves the merge, and
-   Juha too for calibration or physics, in the pull request or in person.
+   (section 7), with the record's content. Henrik approves the merge, in the
+   pull request or in person. He decides whether a change also goes to Juha
+   for review first.
    Until then the branch is pushed but not merged, and it is listed in
    TODO.tex (Q8).
 7. **Merge**, as in gate A. In a commit on the branch just before the
@@ -283,8 +285,8 @@ September 2026).
 ## 7. Pull requests
 
 The review record in the branch is the durable record of the review. Gate-B
-changes also get a pull request, so that Henrik and Juha can read and approve
-them on GitHub. Gate-A changes may have one. Pull requests are opened within
+changes also get a pull request, so that Henrik can read and approve them on
+GitHub, and share them with Juha where he wants his review. Gate-A changes may have one. Pull requests are opened within
 the fork, branch into `main`, never against `jvierine/isr_analysis`. The
 repository is a fork, and `gh` would otherwise offer the parent as the
 target, so always pass `--repo`:
