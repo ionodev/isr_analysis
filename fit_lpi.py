@@ -561,6 +561,39 @@ def fit_acf_ts(acf,
     return(xhat[0:4],model,sigmas,Sigma,ofrac)
 
 
+def range_average(acf, var, rgs, ra):
+    """
+    r^2 weighted mean of the ACF over the 2 ra + 1 gates centred on each gate
+    (fewer at the ends of the range axis), and the variance of that mean.
+
+    acf, var: [n_rg, n_lag]; rgs: [n_rg] in km. Each lag is averaged on its
+    own, over the gates with finite data at that lag: a NaN gate's weight in
+    the denominator would pull the mean towards zero. With w = r^2 the
+    variance of the mean is sum(w^2 v)/sum(w)^2 (1/sum(1/v) is the variance of
+    a 1/v weighted mean, which this is not). Where the centre gate has no data
+    at a lag, empty or masked as space debris, the result is NaN: the window
+    would only hold its neighbours, and the value would belong to another range.
+    """
+    if ra <= 0:
+        return(n.copy(acf),n.copy(var))
+    ok=n.isfinite(acf)&n.isfinite(var)
+    w=n.where(ok,(rgs**2.0)[:,None],0.0)
+    a=n.where(ok,acf,0.0)
+    v=n.where(ok,var,0.0)
+    avg_acf=n.full(acf.shape,n.nan,dtype=acf.dtype)
+    avg_var=n.full(var.shape,n.nan,dtype=var.dtype)
+    n_rg=acf.shape[0]
+    with n.errstate(invalid="ignore",divide="ignore"):
+        for ri in range(n_rg):
+            r0,r1=max(0,ri-ra),min(n_rg,ri+ra+1)
+            ws=n.sum(w[r0:r1,:],axis=0)
+            avg_acf[ri,:]=n.sum(w[r0:r1,:]*a[r0:r1,:],axis=0)/ws
+            avg_var[ri,:]=n.sum(w[r0:r1,:]**2.0*v[r0:r1,:],axis=0)/ws**2.0
+    avg_acf[~ok]=n.nan
+    avg_var[~ok]=n.nan
+    return(avg_acf,avg_var)
+
+
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
 def fit_lpifiles(dirn="lpi_f",
                  channel="misa-l",
@@ -806,25 +839,9 @@ def fit_lpifiles(dirn="lpi_f",
 
             acf_orig=n.copy(acf)
             var_orig=n.copy(var)
-            range_weight=n.copy(acf)
-            range_weight[:,:]=0.0
-            for ri in range(len(rgs)):
-                range_weight[ri,:]=rgs[ri]**2.0
             for rai,ra in enumerate(range_avg):
-                avg_acf=n.copy(acf_orig)
-                avg_var=n.copy(var_orig)        
-
-                if ra > 0:
-
-                    for ri in range(acf.shape[0]):
-                        # ra gates either side, 2 ra + 1 in all as range_avg_window_km
-                        # states; the variance slice also needs the max(0, .): a
-                        # negative start is an empty slice, and 1/0 an infinite
-                        # variance in the lowest ra gates
-                        r0,r1=n.max((0,(ri-ra))),n.min((acf.shape[0],(ri+ra+1)))
-                        avg_acf[ri,:]=n.nansum(range_weight[r0:r1,:]*acf_orig[r0:r1,:],axis=0)/n.nansum(range_weight[r0:r1,:],axis=0)
-                        avg_var[ri,:]=1/(n.nansum(1/var_orig[r0:r1,:],axis=0))
-
+                # ra gates either side, 2 ra + 1 in all as range_avg_window_km states
+                avg_acf,avg_var=range_average(acf_orig,var_orig,rgs,ra)
                 acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]
                 var[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_var[range_limit_idx[rai]:range_limit_idx[rai+1],:]
         
