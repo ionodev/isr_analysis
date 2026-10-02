@@ -561,69 +561,6 @@ def fit_acf_ts(acf,
     return(xhat[0:4],model,sigmas,Sigma,ofrac)
 
 
-def range_average(acf, var, rgs, ra):
-    """
-    r^2 weighted mean of the ACF over the 2 ra + 1 gates centred on each gate
-    (fewer at the ends of the range axis), and the variance of that mean.
-
-    acf, var: [n_rg, n_lag]; rgs: [n_rg] in km. Each lag is averaged on its
-    own, over the gates with finite data at that lag: a NaN gate's weight in
-    the denominator would pull the mean towards zero. With w = r^2 the
-    variance of the mean is sum(w^2 v)/sum(w)^2 (1/sum(1/v) is the variance of
-    a 1/v weighted mean, which this is not). Where the centre gate has no data
-    at a lag, empty or masked as space debris, the result is NaN: the window
-    would only hold its neighbours, and the value would belong to another range.
-    """
-    if ra <= 0:
-        return(n.copy(acf),n.copy(var))
-    ok=n.isfinite(acf)&n.isfinite(var)
-    w=n.where(ok,(rgs**2.0)[:,None],0.0)
-    a=n.where(ok,acf,0.0)
-    v=n.where(ok,var,0.0)
-    avg_acf=n.full(acf.shape,n.nan,dtype=acf.dtype)
-    avg_var=n.full(var.shape,n.nan,dtype=var.dtype)
-    n_rg=acf.shape[0]
-    with n.errstate(invalid="ignore",divide="ignore"):
-        for ri in range(n_rg):
-            r0,r1=max(0,ri-ra),min(n_rg,ri+ra+1)
-            ws=n.sum(w[r0:r1,:],axis=0)
-            avg_acf[ri,:]=n.sum(w[r0:r1,:]*a[r0:r1,:],axis=0)/ws
-            avg_var[ri,:]=n.sum(w[r0:r1,:]**2.0*v[r0:r1,:],axis=0)/ws**2.0
-    avg_acf[~ok]=n.nan
-    avg_var[~ok]=n.nan
-    return(avg_acf,avg_var)
-
-
-def group_by_time(t, max_dt):
-    """
-    Split the start times t (sorted) of the LPI files into fit windows. A
-    window opens at the first file not yet in one and takes the files that
-    start less than max_dt after it. Returns a list of index lists, the last,
-    possibly short, window included.
-    """
-    groups=[]
-    for i,ti in enumerate(t):
-        if len(groups)==0 or not (t[groups[-1][0]] <= ti < t[groups[-1][0]]+max_dt):
-            groups.append([])
-        groups[-1].append(i)
-    return(groups)
-
-
-def fit_is_current(fname, n_files):
-    """
-    True if the fit fname exists and holds at least n_files LPI files. A
-    window that has grown since (the last window of an earlier incremental
-    run), or a fit written before the count was stored, is fitted again.
-    """
-    if not os.path.exists(fname):
-        return(False)
-    try:
-        with h5py.File(fname,"r") as h:
-            return("n_lpi_files" in h and int(h["n_lpi_files"][()]) >= n_files)
-    except OSError:
-        return(False)
-
-
 # the scaling constant ensures matrix algebra can be done without problems with numerical accuracy
 def fit_lpifiles(dirn="lpi_f",
                  channel="misa-l",
@@ -679,13 +616,24 @@ def fit_lpifiles(dirn="lpi_f",
 
     #n_ints=int(n.floor(len(fl)/n_avg))
 
-    # look for sets of files that lie within integration period. the last
-    # set is fitted too (it used to be dropped)
-    ft0s=[]
-    for f in fl:
-        with h5py.File(f,"r") as h:
-            ft0s.append(h["i0"][()])
-    int_files=[[fl[i] for i in g] for g in group_by_time(ft0s,max_dt)]
+    # look for sets of files that lie within integration period
+    int_files=[]
+    t_start=t0
+    this_fl=[]
+    for fi,f in enumerate(fl):
+        h=h5py.File(f,"r")
+        ft0=h["i0"][()]
+
+        if (ft0 >= t_start) and (ft0 < (t_start+max_dt)):
+            this_fl.append(f)
+        else:
+            int_files.append(this_fl)
+#            print(this_fl)
+            t_start=ft0
+            this_fl=[]
+
+            this_fl.append(f)
+        h.close()
         
     # above this, don't use ground clutter removal
     # use removal below this range
@@ -730,8 +678,7 @@ def fit_lpifiles(dirn="lpi_f",
         # still short by one file length.
         t1=h["t1"][()] if "t1" in h else h["i0"][()]
         h.close()
-        # an incremental run refits a window that has gained files since
-        if reanalyze==False and fit_is_current("%s/pp-%d.h5"%(output_dir,t0),n_avg):
+        if os.path.exists("%s/pp-%d.h5"%(output_dir,t0)) and reanalyze==False:
             print("already exists")
             continue
             
@@ -855,9 +802,20 @@ def fit_lpifiles(dirn="lpi_f",
 
             acf_orig=n.copy(acf)
             var_orig=n.copy(var)
+            range_weight=n.copy(acf)
+            range_weight[:,:]=0.0
+            for ri in range(len(rgs)):
+                range_weight[ri,:]=rgs[ri]**2.0
             for rai,ra in enumerate(range_avg):
-                # ra gates either side, 2 ra + 1 in all as range_avg_window_km states
-                avg_acf,avg_var=range_average(acf_orig,var_orig,rgs,ra)
+                avg_acf=n.copy(acf_orig)
+                avg_var=n.copy(var_orig)        
+
+                if ra > 0:
+
+                    for ri in range(acf.shape[0]):
+                        avg_acf[ri,:]=n.nansum(range_weight[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:]*acf_orig[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:],axis=0)/n.nansum(range_weight[n.max((0,(ri-ra))):n.min((acf.shape[0],(ri+ra))),:],axis=0)
+                        avg_var[ri,:]=1/(n.nansum(1/var_orig[(ri-ra):n.min((acf.shape[0],(ri+ra))),:],axis=0))
+
                 acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]
                 var[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_var[range_limit_idx[rai]:range_limit_idx[rai+1],:]
         
@@ -1015,9 +973,6 @@ def fit_lpifiles(dirn="lpi_f",
         ho["rgs"]=rgs
         ho["t0"]=t0
         ho["t1"]=t1
-        # how much data the fit holds; t1-t0 does not say (gaps). the LPI
-        # files store no pulse count
-        ho["n_lpi_files"]=n_avg
         ho["az"]=mean_az
         ho["el"]=mean_el
 

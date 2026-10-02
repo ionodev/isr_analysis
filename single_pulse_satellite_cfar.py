@@ -45,21 +45,17 @@ class Mode:
     clutter_end: int
     noise0: int
     noise1: int
-    # The noise estimate uses the 500 samples before last_echo.  The noise
-    # diode switches on before noise0 in the coded modes (at ~8294) and in
-    # mode 800 (~30113), so a window ending at noise0 would include it.
-    last_echo: int
 
     @property
     def pulse_length(self) -> int:
         return self.tx1 - self.tx0
 
 
-AC_MODE = Mode(tx0=76, tx1=624, clutter_end=1000, noise0=8400, noise1=8850, last_echo=8200)
+AC_MODE = Mode(tx0=76, tx1=624, clutter_end=1000, noise0=8400, noise1=8850)
 MODES = {
     **{sweep: AC_MODE for sweep in range(1, 33)},
-    300: Mode(tx0=76, tx1=645, clutter_end=1000, noise0=7800, noise1=8371, last_echo=7700),
-    800: Mode(tx0=69, tx1=2171, clutter_end=3721, noise0=30176, noise1=32033, last_echo=30000),
+    300: Mode(tx0=76, tx1=645, clutter_end=1000, noise0=7800, noise1=8371),
+    800: Mode(tx0=69, tx1=2171, clutter_end=3721, noise0=30176, noise1=32033),
 }
 
 CHUNK_FIELDS = {
@@ -344,20 +340,6 @@ def cfar_peaks(
     return peaks, alpha
 
 
-QUIET_SAMPLES = 500
-
-
-def quiet_window(mode: Mode, factor: int, offset: int) -> tuple[slice, slice]:
-    """
-    The noise window: the QUIET_SAMPLES raw samples before last_echo, after
-    the echoes and before the noise diode switches on.  Returns the raw slice
-    and the slice of decimated samples whose blocks lie wholly inside it
-    (decimated sample j covers raw samples offset + j*factor ... +factor).
-    """
-    start, stop = mode.last_echo - QUIET_SAMPLES, mode.last_echo
-    return slice(start, stop), slice(ceil_div(start - offset, factor), (stop - offset) // factor)
-
-
 def detect_pulse(
     rf: DigitalRFReader,
     sample: int,
@@ -374,12 +356,13 @@ def detect_pulse(
     echo = rf.read_vector(sample, read_length, channel).astype(np.complex64, copy=False)
     tx = rf.read_vector(sample, read_length, "tx-h").astype(np.complex64, copy=False)
 
-    quiet_raw_slice, quiet_slice = quiet_window(mode, factor, offset)
-    quiet_raw = echo[quiet_raw_slice]
+    quiet_raw = echo[mode.noise0 - 500 : mode.noise0]
     echo_dc = np.complex64(np.median(quiet_raw.real) + 1j * np.median(quiet_raw.imag))
     echo = np.asarray(echo - echo_dc, dtype=np.complex64)
     echo = integrate_and_decimate(echo, factor, offset)
-    quiet = echo[quiet_slice]
+    quiet_start = ceil_div(mode.noise0 - 500 - offset, factor)
+    quiet_stop = (mode.noise0 - offset) // factor
+    quiet = echo[quiet_start:quiet_stop]
     quiet_power = float(np.median(np.abs(quiet) ** 2) / math.log(2.0))
     if not np.isfinite(quiet_power) or quiet_power <= 0:
         return []

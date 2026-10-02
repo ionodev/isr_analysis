@@ -54,8 +54,7 @@ def lpi_files():
 def stage(out, t0, arm):
     """
     A directory holding the period's files only, plus the first file after it:
-    before fit-lpi-last-group, fit_lpifiles fitted a group only when it met
-    the next one's first file. load() picks the period's own fit by time.
+    fit_lpifiles closes a period when it meets the next one's first file.
     """
     base = "%s/%s_%d" % (out, arm, t0)
     d = "%s/lpi%s/%s" % (base, POSTFIX, CHANNEL)
@@ -133,11 +132,8 @@ def run_one(out, t0, arm):
 
 def load(out, t0, arm):
     base = "%s/%s_%d" % (out, arm, t0)
-    # the period's own fit: since fit_lpifiles also fits the last group, the
-    # extra file stage() adds gets a pp file of its own
-    f = [g for g in glob.glob("%s/lpi%s/%s/pp-*.h5" % (base, POSTFIX, CHANNEL))
-         if t0 <= int(os.path.basename(g)[3:-3]) < t0 + FIT["max_dt"]]
-    if len(f) != 1:
+    f = glob.glob("%s/lpi%s/%s/pp-*.h5" % (base, POSTFIX, CHANNEL))
+    if not f:
         return None
     with h5py.File(f[0], "r") as h:
         r = {k: h[k][()] for k in ("Te", "Ti", "ne", "dTe_Ti", "dTi", "dne", "rgs")}

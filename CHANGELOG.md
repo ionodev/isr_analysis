@@ -23,63 +23,65 @@ conflict here; resolve by keeping all the entries.
 
 ## Waiting for gate B (on branches, not merged)
 
-Nothing at the moment.
-
-## 2026-10-02
+Each has passed gate A (code review, tests, benchmark; record in
+`review/records/2026-10-02-<branch>.md` on the branch). All change the
+products, so all need gate B: a scientific review, then the merge. Henrik's
+approvals are from 2 October 2026; his approval is the only one needed.
 
 ### Fixed
-The seven fix branches, merged together through `integration-all-fixes`
-(the merge names the records `review/records/2026-10-02-<branch>.md`). Each
-passed gate A (code review, tests, benchmark) and gate B (scientific review;
-full verification for the mode-300 fix; reports in the project's
-`documents_logs/reviews/2026-10-02-gate-b/`), with the changes the reviews
-asked for, and Henrik's approval. Products made before this merge are out of
-date, and so are MISA's stored density ("magic") constants.
-- **`lpi-unconstrained-gates`** (33022a1): when the outlier rejection empties
-  a range gate at some lag, the inversion solves for the constrained
-  unknowns and leaves only the unconstrained ones NaN, instead of losing the
-  whole lag (36 of 78 MISA periods in a test hour lost a median of 11 of 45
-  lags). Memo 29, item 17.
-- **`antenna-switch-gap`** (bcf989f): the antenna metadata record a change of
-  antenna a median 8.6 s (2.3-20.8 s) after the radar makes it, so each
-  channel took in a median of 190-244 pulses per change sent on the other
-  antenna or not at all. The antenna is now unknown from 3.0 s before each
-  cycle's closing event until the next opening event (2.5 s left 23 bad
-  pulses at its edge), and the recording's first minute is kept. Memo 30.
-- **`fit-lpi-range-avg`** (c05e758): the range average now uses a centred
-  window of 2r_a+1 gates (it was off by half a gate, which biased n_e high
-  by about 4-5 % at 300-650 km); counts only gates with data at each lag in
-  its r² weights (empty gates pulled the average towards zero); computes its
-  variance as Σw²v/(Σw)² (1/Σ(1/v) made the error bars below 150 km up to 36
-  times too small); and writes NaN where the centre gate has no data or is
-  debris-masked (the "recovered" 63 km gate was the next gate's data). At
-  the few lowest gates with data only at short lags, and next to masked
-  gates, the window can differ from lag to lag. Item 16b.
-- **`fit-lpi-last-group`** (f30a849): `fit_lpifiles` fits the last group of
-  files of a run too, which it never did, and each fit stores the number of
-  LPI files behind it (`n_lpi_files`); with `reanalyze` off, a window that
-  has grown, or a fit without the count, is fitted again. The first such run
-  over an existing archive therefore refits every old window once. Memo 35.
-- **`mode300-injection-window`** (065049d): mode 300's noise-injection window
-  started at 7800 µs, before the noise diode's switch-on burst (a 2-µs burst
-  at 7816-7817 µs), so MISA's mode-300 T_sys was low by a factor 1.24-1.38
-  over 8 April, changing during the day, and its range-Doppler densities
-  with it. The window now starts at 7850 µs, which leaves +0.19 ± 0.11 % on
-  MISA (7830 would leave 0.85 %). Zenith changes by -0.8 %; in the inversion
-  MISA's T_sys rises by about 6.5 %. Memo 27; fully verified from the raw
-  data. The site's own T_sys log reads MISA 0.96 of ours after the fix (an
-  open question).
-- **`tx-delay-own-antenna`** (c908db7): the channel-delay estimator searches
-  up to 40 minutes for pulses on the receiver's own antenna before falling
-  back to the other antenna's, whose leakage arrives 1.2-2.3 µs away. On
-  the products the effect is a gain change of about 0.04 % and 14 m in the
-  range-Doppler spectra. Memo 29.
-- **`catalogue-noise-window`** (c423963): the satellite catalogue's noise
-  window ends at the last echo instead of containing the noise diode, so its
-  SNRs rise by about 1.3 dB (coded) and 0.7 dB (mode 800); about 2 % of the
-  detections, all marginal, are lost. Memo 28. The stored catalogue is to be
-  rerun.
 
+- **`lpi-unconstrained-gates`** (c2df47d): when the outlier rejection
+  empties a range gate at some lag, the normal matrix is singular and the
+  whole lag was lost (36 of 78 MISA periods in a test hour lose a median of
+  11 of 45 lags). The inversion now solves for the constrained unknowns and
+  leaves only the unconstrained ones NaN (`invert_normal`). Memo 29, item 17.
+  Approved by Henrik.
+- **`mode300-injection-window`** (1184dd9): mode 300's noise-injection window
+  started 13 µs before the noise diode switches on and caught its overshoot,
+  so MISA's mode-300 T_sys was about 26 % too low and its range-Doppler
+  densities 1.29-1.37 times too low. The window now starts at 7830 µs.
+  In the inversion, MISA's T_sys moves by 5.7-8.1 %; zenith-l by about
+  1 % or less. Memo 27. The site's own T_sys log of 8 April preliminarily
+  agrees (site/ours for MISA's range-Doppler T_sys: 1.27). Open: start the
+  window at 7830 or at about 7850 µs. A calibration change: approved by
+  Henrik; as a calibration change it gets a full verification in gate B.
+- **`antenna-switch-gap`** (28e658f): the antenna metadata record a change
+  of antenna 2.3-20.8 s (median 8.6 s) after the radar makes it, so each
+  channel took in a median of 190-244 pulses per change that were sent on
+  the other antenna or not at all. The antenna is now unknown from 2.5 s
+  before each cycle's closing event until the next opening event, and those
+  pulses are skipped. Memo 30. Must be merged together with
+  `lpi-unconstrained-gates`. Approved by Henrik.
+- **`catalogue-noise-window`** (387d933): the satellite catalogue's noise
+  window contained the noise diode in the coded modes and mode 800, so its
+  SNRs were 1.3 and 0.7 dB too low. The window now ends at the last echo.
+  Memo 28. Approved by Henrik; the stored catalogue needs a rerun or a
+  correction (open).
+- **`tx-delay-own-antenna`** (979c1b7): the channel-delay estimator looked
+  only 20 s ahead for pulses on the receiver's own antenna before falling
+  back to the other antenna's, whose leakage arrives 1.2-2.3 µs away. It now
+  searches up to 40 minutes first. On the benchmark, zenith-l's delay moves
+  from 11.88 to 10.62 µs, shifting every zenith-l range-Doppler spectrum by
+  1.3 samples (195 m); single gates changing by up to 12-23 σ, and the
+  0.1 µs against an independent 10.72 µs, are not yet explained (for gate B).
+  Memo 29. Approved by Henrik, on a condition the fix meets.
+- **`fit-lpi-range-avg`** (b093f5c): the range average gave the lowest
+  gates infinite variance and averaged 2r_a gates, off centre by half a
+  gate, instead of 2r_a+1. In a test before the benchmark, fit parameters
+  moved by a median of 0.2-0.7 σ below 700 km. Item 16b. Approved by Henrik.
+- **`fit-lpi-last-group`** (26b726e): `fit_lpifiles` never fitted the last
+  group of files of a run (the last `max_dt`). Memo 35. Approved by
+  Henrik.
+
+All seven together are on `integration-all-fixes` (3fbc1ef); their combined
+benchmark is the sum of the single branches, except at one antenna switch,
+where `antenna-switch-gap` needs `lpi-unconstrained-gates`. **Merge order:**
+`lpi-unconstrained-gates`, `antenna-switch-gap`, `fit-lpi-range-avg` and
+`fit-lpi-last-group` go in together, since each of the other three alone
+leaves fits with no lags (on its own the new misa-l last-group fit is all
+NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
+
+## 2026-10-02
 
 ### Process
 - This changelog, and the rule that every merge adds its entry
