@@ -7,6 +7,16 @@ code, including Claude sessions, supervised or autonomous.
 
 ## 1. The two gates
 
+In short (Henrik, 2026-10-02):
+
+| Change | Where it goes |
+|---|---|
+| Output-neutral code (gate A) | reviewed and committed on its branch; merged into `main` directly after gate A, without a pull request |
+| Product-changing code (gate B) | merged into `main` only through a pull request that Henrik reviews and approves |
+| The review tooling | through a pull request that Henrik approves |
+| Documentation only (Markdown, LaTeX) | committed to `main` directly, no pull request |
+
+
 Every code change goes through **gate A**: tests, the benchmark, an
 independent code review, and a review record. The benchmark then decides
 whether the change also needs **gate B**:
@@ -43,9 +53,10 @@ gate B. Changes to how the tables are generated always do.
 
 Changes to the review tooling itself (`review/regression.py`,
 `review/benchmark.json`, `.claude/agents/`, this file) need Henrik's
-approval.
+approval, through a pull request.
 
-Changes to documentation only (Markdown, LaTeX) need no gate. A `.py` change
+Changes to documentation only (Markdown, LaTeX) need no gate and no pull
+request: they are committed to `main` directly. A `.py` change
 that is meant to touch comments only still goes through gate A, because
 someone has to confirm that it does.
 
@@ -284,9 +295,16 @@ September 2026).
 
 ## 7. Pull requests
 
-The review record in the branch is the durable record of the review. Gate-B
-changes also get a pull request, so that Henrik can read and approve them on
-GitHub, and share them with Juha when he wants his input. Gate-A changes may have one. Pull requests are opened within
+The review record in the branch is the durable record of the review. A
+gate-B change is merged into `main` only through a pull request, which Henrik
+reviews and approves; approval in chat beforehand does not replace it. He may
+share it with Juha when he wants his input. Changes to the review tooling
+also go through a pull request. Output-neutral gate-A changes are merged
+directly, and documentation is committed directly, without one.
+
+GitHub does not let Henrik approve a pull request opened under his own
+account. He approves by merging it himself, or by saying so in chat, after
+which Claude merges it. Pull requests are opened within
 the fork, branch into `main`, never against `jvierine/isr_analysis`. The
 repository is a fork, and `gh` would otherwise offer the parent as the
 target, so always pass `--repo`:
