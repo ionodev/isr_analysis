@@ -44,6 +44,11 @@ needed", and why.
 
 Findings, and what was done about each: fixed in `<sha>`, or answered.
 
+## Changelog
+
+The entry added to `CHANGELOG.md` (under "Waiting for gate B" or the merge
+date), and for gate B: moved to the merge date before the merge.
+
 ## Decision
 
 - Gate A: passed on `<date>`, merged in `<merge sha>`.
