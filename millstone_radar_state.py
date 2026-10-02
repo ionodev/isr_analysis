@@ -52,8 +52,10 @@ def get_tx_power_model(dirn,plot=False):
 
 
 # seconds before a cycle-end event from which the antenna is treated as
-# unknown when the next cycle uses the other antenna (memo 30)
-ANTENNA_SWITCH_GUARD_S=2.5
+# unknown when the next cycle uses the other antenna (memo 30). 2.5 s left
+# 23 never-sent pulses at -2.57 to -2.50 s in 5 of the 592 changes of
+# eclipse2024; 3.0 s leaves none there (gate B review, 2 October 2026)
+ANTENNA_SWITCH_GUARD_S=3.0
 
 def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     """
@@ -76,7 +78,13 @@ def get_antenna_select(dirn,plot=False,switch_guard_s=ANTENNA_SWITCH_GUARD_S):
     before the closing event until the opening event, where the next cycle
     uses the other antenna, both functions return 0, and tests like
     tx_ant(t)<=-0.99 reject those pulses.  The guard was chosen on this
-    recording.  Before the first event the functions return the first
+    recording's 592 changes: at 2.5 s no pulse sent on the other antenna is
+    accepted, but 23 pulses sent on neither (the transmitter pause) are, at
+    2.50-2.57 s before the closing event in 5 changes; at 3.0 s none are,
+    apart from one anomalous change on 8 April 05:51:33 UTC, where the
+    transmitter stopped 3.85-6.28 s before the closing event and leaves 273
+    noise-only zenith-l pulses.  3.0 s costs about 0.5 s of good pulses per
+    change more than 2.5 s.  Before the first event the functions return the first
     recorded value, which is the antenna of the cycle in progress when the
     recording starts, also when that first event closes a cycle.
     switch_guard_s=None gives the metadata as recorded, and is also used,
