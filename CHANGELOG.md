@@ -26,8 +26,7 @@ conflict here; resolve by keeping all the entries.
 Each has passed gate A (code review, tests, benchmark; record in
 `review/records/2026-10-02-<branch>.md` on the branch). All change the
 products, so all need gate B: a scientific review, then the merge. Henrik's
-approvals are from 2 October 2026 (Henrik decides on the code changes, and
-which of them go to Juha for review).
+approvals are from 2 October 2026; his approval is the only one needed.
 
 ### Fixed
 
