@@ -17,8 +17,9 @@ whether the change also needs **gate B**:
   default.
 - **Some output differs** (the change is *product-changing*): gate B follows.
   Gate B is a scientific review of the new results, a full independent
-  verification when that review calls for it, and Henrik's approval, and
-  Juha's too for calibration or physics.
+  verification when that review calls for it, and Henrik's approval. No
+  other approval is needed at any step; Henrik may choose to wait for Juha's
+  input before approving.
   Examples: bug fixes that change numbers, new defaults, calibration changes.
 
 Gate B does not repeat the code review. It checks what gate A cannot: whether
@@ -84,13 +85,24 @@ someone has to confirm that it does.
    (section 6a), which has no part in the work. Findings are fixed, or
    answered in the record, and the reviewer checks the fixes. This is the
    only code review, for both kinds of change.
-4. **Review record.** Write `review/records/<YYYY-MM-DD>-<branch>.md` from
-   `review/records/TEMPLATE.md` (with any `/` in the branch name replaced by
-   `-`) and commit it on the branch.
+4. **Review record and changelog.** Write
+   `review/records/<YYYY-MM-DD>-<branch>.md` from `review/records/TEMPLATE.md`
+   (with any `/` in the branch name replaced by `-`) and commit it on the
+   branch. Add the change to `CHANGELOG.md` on the branch: under "Waiting for
+   gate B" for a product-changing change, or under the merge date otherwise,
+   citing the last commit of the change itself (the file's header says
+   how).
+   Documentation-only merges, which need no gate, still add a Process
+   entry.
 5. **Merge, if output-neutral.** Right before merging, check that `main` has
    not moved since the benchmark: `git merge-base --is-ancestor main <tested
    commit>`. If it has, merge `main` into the branch and repeat the
-   benchmark. Then merge into `main` with a merge commit that names the
+   benchmark, unless the new commits on `main` change only Markdown or LaTeX
+   files: then merging `main` is enough, and the check becomes that the
+   difference from the tested commit to the branch tip is in such files only
+   (`git diff --name-only <tested commit> <branch>`). The agent files in
+   `.claude/agents/` are Markdown too; they change the reviews, not the
+   outputs. Then merge into `main` with a merge commit that names the
    record, and push `main` and the branch. A product-changing change goes on
    to gate B instead.
 
@@ -126,12 +138,15 @@ someone has to confirm that it does.
 5. **Review record**, completed with the benchmark report, the scientific
    review, and the verification if one was done.
 6. **Pull request and approval.** Open a pull request within the fork
-   (section 7), with the record's content. Henrik approves the merge, and
-   Juha too for calibration or physics, in the pull request or in person.
+   (section 7), with the record's content. Henrik approves the merge, in the
+   pull request or in chat; his approval is the only one needed. He may wait
+   for Juha's input first.
    Until then the branch is pushed but not merged, and it is listed in
    TODO.tex (Q8).
-7. **Merge**, as in gate A. Products made before the merge are marked out of
-   date in TODO.tex.
+7. **Merge**, as in gate A. In a commit on the branch just before the
+   merge, move the change's `CHANGELOG.md` entry from "Waiting for gate B"
+   to the merge date. Products made before the merge are
+   marked out of date in TODO.tex.
 
 ## 4. The benchmark
 
@@ -270,8 +285,8 @@ September 2026).
 ## 7. Pull requests
 
 The review record in the branch is the durable record of the review. Gate-B
-changes also get a pull request, so that Henrik and Juha can read and approve
-them on GitHub. Gate-A changes may have one. Pull requests are opened within
+changes also get a pull request, so that Henrik can read and approve them on
+GitHub, and share them with Juha when he wants his input. Gate-A changes may have one. Pull requests are opened within
 the fork, branch into `main`, never against `jvierine/isr_analysis`. The
 repository is a fork, and `gh` would otherwise offer the parent as the
 target, so always pass `--repo`:
