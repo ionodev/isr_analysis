@@ -70,8 +70,8 @@ approvals are from 2 October 2026; his approval is the only one needed.
   gate, instead of 2r_a+1. In a test before the benchmark, fit parameters
   moved by a median of 0.2-0.7 σ below 700 km. Item 16b. Approved by Henrik.
 - **`fit-lpi-last-group`** (26b726e): `fit_lpifiles` never fitted the last
-  group of files of a run (the last `max_dt`). Memo 35. Waiting for
-  Henrik's decision.
+  group of files of a run (the last `max_dt`). Memo 35. Approved by
+  Henrik.
 
 All seven together are on `integration-all-fixes` (3fbc1ef); their combined
 benchmark is the sum of the single branches, except at one antenna switch,
