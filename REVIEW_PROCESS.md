@@ -84,9 +84,12 @@ someone has to confirm that it does.
    (section 6a), which has no part in the work. Findings are fixed, or
    answered in the record, and the reviewer checks the fixes. This is the
    only code review, for both kinds of change.
-4. **Review record.** Write `review/records/<YYYY-MM-DD>-<branch>.md` from
-   `review/records/TEMPLATE.md` (with any `/` in the branch name replaced by
-   `-`) and commit it on the branch.
+4. **Review record and changelog.** Write
+   `review/records/<YYYY-MM-DD>-<branch>.md` from `review/records/TEMPLATE.md`
+   (with any `/` in the branch name replaced by `-`) and commit it on the
+   branch. Add the change to `CHANGELOG.md` on the branch: under "Waiting for
+   gate B" for a product-changing change, or under the merge date otherwise
+   (the file's header says how).
 5. **Merge, if output-neutral.** Right before merging, check that `main` has
    not moved since the benchmark: `git merge-base --is-ancestor main <tested
    commit>`. If it has, merge `main` into the branch and repeat the
@@ -130,8 +133,9 @@ someone has to confirm that it does.
    Juha too for calibration or physics, in the pull request or in person.
    Until then the branch is pushed but not merged, and it is listed in
    TODO.tex (Q8).
-7. **Merge**, as in gate A. Products made before the merge are marked out of
-   date in TODO.tex.
+7. **Merge**, as in gate A, moving the change's `CHANGELOG.md` entry from
+   "Waiting for gate B" to the merge date. Products made before the merge are
+   marked out of date in TODO.tex.
 
 ## 4. The benchmark
 
