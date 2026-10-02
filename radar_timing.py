@@ -37,18 +37,20 @@ T_INJECTION = 1172.0
 TMM = {}
 
 # uncoded long pulse
-# The diode switches on at about 7813 us in mode 300 and overshoots for the
-# first 5-10 us: averaged over its first 5 us the power is 33 times the
-# settled level on misa-l and 3 times on zenith-l (memo 27). A window from
-# 7800 included 13 background samples and the spike, which raised misa-l's
-# injection power by 29 % and lowered its T_sys by 26 % (memo 27). The window
-# now starts at 7830, after the unfiltered diode power has settled (by about
-# 7822, memo 35). The receiver's low-pass filters smear the spike: with the
-# range-Doppler path's filter about 1 % of injection power is left at 7830 on
-# misa-l, none from about 7850 (gate A review, 2026-10-01).
-# The satellite catalogue has its own mode table with noise0 7800, which is
-# correct there (its quiet window ends before the diode): do not synchronise.
-TMM[300] = {"noise0": 7830, "noise1": 8371, "tx0": 76, "tx1": 645,
+# The diode switches on at 7813-7816 us in mode 300 (50 % point, over 7-9
+# April) with a 2 us incoherent noise burst at 7816-7817: single-sample peaks
+# 108-187 times the settled level on misa-l and 10-13 times on zenith-l,
+# down to 1.12 by 7822 (gate B review, 2026-10-02). The receiver's 60 kHz
+# low-pass filter in the range-Doppler path smears the burst: on misa-l it
+# leaves +0.85 +/- 0.11 % of the injection power at 7830 and +0.19 +/- 0.11 %
+# at 7850, so the window starts at 7850 (the LPI path is clean at both). The
+# old window from 7800 took in the burst and 13-16 background samples, and
+# biased misa-l's T_sys low by a factor of 1.24-1.38 over 8 April, varying
+# through the day (1.31-1.38 before 15 UT, 1.24-1.29 after). The fix changes
+# zenith-l's T_sys by -0.8 %.
+# The satellite catalogue has its own mode table with noise0 7800, kept on
+# purpose: its quiet window ends before the diode. Do not synchronise.
+TMM[300] = {"noise0": 7850, "noise1": 8371, "tx0": 76, "tx1": 645,
             "gc": 1000, "last_echo": 7700, "e_gc": 800, "read_length": 10000}
 
 # 16-baud alternating codes
