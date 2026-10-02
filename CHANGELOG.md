@@ -86,7 +86,8 @@ NaN); `tx-delay-own-antenna` belongs with `antenna-switch-gap`.
 ### Process
 - This changelog, and the rule that every merge adds its entry
   (REVIEW_PROCESS.md, gate A step 4; the record and pull-request templates).
-  Branch `changelog`; the process change needs Henrik's approval.
+  Henrik's approval is the only one needed at any step. Pull request #3
+  (merge acdf30e), approved and merged by Henrik.
 
 ## 2026-10-01
 
