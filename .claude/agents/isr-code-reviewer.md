@@ -64,7 +64,11 @@ The checklist of REVIEW_PROCESS.md, section 6:
    and put each in a bin (Henrik, 2026-10-03): **fix** (a bug, or wrong
    output in a case that occurs), **caveat** (real but harmless here: a
    comment or the record notes it) or **drop** (style, or a case that
-   cannot occur). Only fixes block the change.
+   cannot occur). Only fixes block the change. Judge by the project policy
+   (`~/isr_project/CLAUDE.md`, 2026-10-03): the code is a test bed for the
+   satellite and RFI mitigation methods, not production software; a defect
+   that does not change the comparison between methods or a reported result
+   is a caveat.
 3. **What you checked and found fine**, briefly.
 
 Be concrete and concise. When the author asks for a follow-up round, check
