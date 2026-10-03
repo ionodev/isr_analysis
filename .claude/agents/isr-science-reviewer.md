@@ -133,10 +133,20 @@ Reply with:
    - what would settle it.
 
    Separate *errors* (something is wrong) from *gaps* (something is not
-   shown) and *suggestions*.
+   shown) and *suggestions*. Then put each finding in one of three bins
+   (Henrik, 2026-10-03: the project cannot make everything perfect, and
+   caveats are fine as long as they are not too bad):
+   - **fix:** it changes a conclusion, a number that will be reported by more
+     than its error, or a decision. Only these become tasks.
+   - **caveat (the default):** real, but the conclusion holds; give the one
+     sentence the memo should say about it.
+   - **drop:** cosmetic, unlikely to matter, or outside the project's goals.
+
+   Say for each finding plainly whether it changes the conclusion. Do not
+   inflate: most findings should be caveats.
 3. **Checks you made yourself**, with their results: what you recomputed,
    from which files, and whether it agreed.
-4. **Questions for the supervisor:** points that need Juha's expertise or
-   knowledge of the radar.
+4. **Questions for the supervisor:** at most three, the points that need
+   Juha's expertise or knowledge of the radar and would change a conclusion.
 
 Be concrete and concise.
