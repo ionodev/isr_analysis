@@ -2,8 +2,11 @@
 
 Nothing is merged into `main` until it has passed the review below and Henrik
 has approved its pull request (documentation excepted). The aim
-is that the code on `main` is free of known bugs and gives correct results.
-The process was agreed on 2026-09-30. It applies to everyone who changes the
+is code that is good enough to be a testbed for the satellite and RFI
+mitigation methods, which is the project's purpose; it is not production ISR
+software (Henrik's project policy, 2026-10-03, `project_policy.tex` in the
+documents). Known limitations that are reasonable for that purpose are
+accepted and noted, not fixed. The process was agreed on 2026-09-30. It applies to everyone who changes the
 code, including Claude sessions, supervised or autonomous.
 
 ## 1. The two gates
@@ -31,10 +34,10 @@ whether the change also needs **gate B**:
   new scripts, tests, refactoring, speed-ups, new options that are off by
   default.
 - **Some output differs** (the change is *product-changing*): gate B follows.
-  Gate B is a scientific review of the new results, a full independent
-  verification when that review calls for it, and Henrik's approval. No
-  other approval is needed at any step; Henrik may choose to wait for Juha's
-  input before approving.
+  Gate B is Henrik's own review of the changed results, in the pull request
+  (since 2026-10-03; before, an AI scientific review). No other approval is
+  needed at any step; Henrik may choose to wait for Juha's input before
+  approving.
   Examples: bug fixes that change numbers, new defaults, calibration changes.
 
 Gate B does not repeat the code review. It checks what gate A cannot: whether
@@ -125,42 +128,28 @@ someone has to confirm that it does.
 
 ## 3. Gate B: in addition, for changes that alter the products
 
+Gate B is Henrik's review (Henrik, 2026-10-03). The AI scientific review that
+gate B used to require tended to find many issues that do not matter for the
+project, so it is no longer part of the gate. Claude prepares what Henrik
+needs to review the change quickly:
+
 1. **The benchmark report, explained.** It shows which outputs change and by
    how much: in standard deviations for the ACFs, relative for the rest, and
    lost or recovered values. Every change in it must be explained by the
    fix. A change nobody can explain is a bug until shown otherwise.
-2. **Memo.** A memo says what changed, why, by how much, and what was not
-   checked.
-3. **Scientific review**, by the independent `isr-science-reviewer` agent on
-   Opus 5.5 (sections 5, 6a). Are the changed results physically sound, and
-   does the conclusion follow from the evidence? It includes **spot checks**:
-   the reviewer recomputes the one or two numbers the conclusion rests on,
-   from the result files that already exist, without new runs on the raw
-   data. It lists every key claim it could not confirm, and says whether a
-   full verification is needed.
-4. **Full independent verification, only when needed.** The key claims are
-   recomputed with separately written scripts, not the author's, including
-   new runs on the data where necessary. Memo 30's last section is an
-   example: it found two overstated numbers. This is done:
-   - when the scientific review flags a result as questionable, or leaves a
-     key claim unconfirmed;
-   - **always** for a change to the calibration or the absolute density scale
-     (noise injection, system temperature, the conversion to density, the
-     magic constant). An error there silently shifts every product.
-
-   The same reviewer continues with it, so it keeps its context.
-
-   Findings of steps 3 and 4 are fixed in the memo or the code, or answered
-   in the record.
-5. **Review record**, completed with the benchmark report, the scientific
-   review, and the verification if one was done.
-6. **Pull request and approval.** Open a pull request within the fork
-   (section 7), with the record's content. Henrik approves the merge, in the
-   pull request or in chat; his approval is the only one needed. He may wait
-   for Juha's input first.
-   Until then the branch is pushed but not merged, and it is listed in
-   TODO.tex (Q8).
-7. **Merge**, as in gate A. In a commit on the branch just before the
+2. **A short summary** in the pull request (a memo only if the change needs
+   one): what was wrong, what changes in the products and by how much, the
+   evidence, and what was not checked. Keep it to what Henrik needs to
+   decide; leave out findings that do not affect the satellite and RFI work
+   or a reported result.
+3. **Review record**, completed with the benchmark report.
+4. **Pull request and Henrik's review.** Open a pull request within the fork
+   (section 7). Henrik reviews it and approves the merge, in the pull
+   request or in chat; his approval is the only one needed. He may wait for
+   Juha's input first, or ask for an AI scientific review or a full
+   verification (section 5) when he wants a second look. Until then the
+   branch is pushed but not merged, and it is listed in TODO.tex.
+5. **Merge**, as in gate A. In a commit on the branch just before the
    merge, move the change's `CHANGELOG.md` entry from "Waiting for gate B"
    to the merge date. Products made before the merge are
    marked out of date in TODO.tex.
@@ -216,43 +205,32 @@ are cached.
 Add a period to the benchmark when a new problem is found. This changes the
 key, so every commit is run afresh.
 
-## 5. Scientific review
+## 5. Scientific review (on request)
 
-Correct code can still give wrong science, and an author tends to read their
-own results kindly. So results get a scientific review by an independent
-reviewer who did not do the work. This is required for gate B, and for every
-memo that reports results (not only those tied to a code change), before the
-memo goes to Juha.
+An AI scientific review is available, but no step requires it (Henrik,
+2026-10-03). Henrik asks for one when he wants a second look at a memo or a
+pull request, for example before results go to Juha.
 
 For Claude, the reviewer is the agent `isr-science-reviewer`
 (`.claude/agents/isr-science-reviewer.md`, on Opus 5.5). It is briefed as an experienced
 space physicist and ISR expert, it is read-only, and it may read the
-literature on the web. It checks:
-- physical plausibility, and the eclipse response against earlier eclipse
-  studies;
-- the assumptions of ISR theory, and fits on table edges;
-- calibration;
-- whether the uncertainties match the scatter;
-- whether the claims follow from the evidence;
-- alternative explanations;
-- comparison with independent sources (IRI, ionosondes, GNSS TEC, published
-  results).
+literature on the web. It checks physical plausibility, the assumptions of
+ISR theory, calibration, whether the uncertainties match the scatter, whether
+the claims follow from the evidence, alternative explanations, and
+comparison with independent sources. It includes spot checks of the key
+numbers; a full independent verification (the key claims recomputed with
+separately written scripts) follows only when Henrik asks for it.
 
-It reports a verdict, findings with evidence, the checks it made, and
-questions for the supervisor. To run it, ask Claude to "use the
-isr-science-reviewer agent on Memo N" (or on a branch's record). The
-agents in `.claude/agents/` are found by sessions started in the repository
-or below it, and by every session when they are linked into
-`~/.claude/agents/`. A new `agents` directory is noticed only by sessions
-started after it was created.
+To run it, ask Claude to "use the isr-science-reviewer agent on Memo N" (or
+on a branch's record). The agents in `.claude/agents/` are found by sessions
+started in the repository or below it, and by every session when they are
+linked into `~/.claude/agents/`.
 
-The review includes spot checks of the key numbers. A full independent
-verification follows when the review calls for it, and always for results on
-the calibration or the absolute density scale (section 3, step 4).
-
-This review is an AI's second look. It can share blind spots with the agent
-that did the work, and it does not replace Juha's judgement. Its purpose is
-to catch what can be caught before results reach him.
+Its findings are sorted as the project policy says: only what changes a
+conclusion, a reported result, or the satellite and RFI comparison becomes a
+task; the rest is noted as a caveat. This review is an AI's second look. It
+can share blind spots with the agent that did the work, and it does not
+replace Juha's judgement.
 
 ## 6. Code review checklist
 
@@ -283,8 +261,8 @@ kept for the steps where a missed error would reach the results.
 |---|---|---|
 | tests, benchmark, bit-identity, commit identity | scripts | none |
 | code review (gate A, every change) | `isr-code-reviewer` | Claude Sonnet 5.5 (`claude-sonnet-5-5`) |
-| scientific review with spot checks (gate B, and memos with results) | `isr-science-reviewer` | Claude Opus 5.5 (`claude-opus-5-5`) |
-| full verification (when flagged, and always for calibration) | `isr-science-reviewer`, continued | Claude Opus 5.5 |
+| scientific review with spot checks (only when Henrik asks) | `isr-science-reviewer` | Claude Opus 5.5 (`claude-opus-5-5`) |
+| full verification (only when Henrik asks) | `isr-science-reviewer`, continued | Claude Opus 5.5 |
 
 The agents' models are fixed by full ID in `.claude/agents/`, so they do not
 change when the short names `sonnet` and `opus` move to newer versions.
@@ -329,9 +307,7 @@ merge with a merge commit, either locally (then push) or with
 Autonomous Claude runs (see `~/isr_project/AUTONOMOUS_RUNS.md`) follow the
 same gates, with the `isr-code-reviewer` agent as the independent reviewer.
 They merge nothing into `main`: they push each reviewed branch, with the
-benchmark report and the verification ready in the record, and open its pull
-request for Henrik's approval. They may commit documentation to `main`.
-
-They also run the scientific review (section 5) on every memo they write
-that reports results, with the `isr-science-reviewer` agent. They fix what
-it finds, or list it in the report as open.
+benchmark report ready in the record, and open its pull request for
+Henrik's review. They may commit documentation to `main`. They run the
+scientific review (section 5) only when Henrik's instructions for the run
+ask for it.

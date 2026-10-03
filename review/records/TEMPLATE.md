@@ -28,17 +28,15 @@ code touched".
 For gate B: which outputs change and by how much, and why each change is
 expected.
 
-## Scientific review (gate B, and memos with results)
+## Summary for Henrik's review (gate B)
 
-Reviewer (`isr-science-reviewer`): its verdict, its spot checks, the claims
-it could not confirm, whether it called for a full verification, its
-findings and what was done about each, and its questions for the
-supervisor.
+What was wrong, what changes in the products and by how much, the evidence,
+and what was not checked.
 
-## Full verification (when flagged, and always for calibration)
+## Scientific review (only if Henrik asked for one)
 
-What was recomputed, with which scripts and runs, and the result. Or: "not
-needed", and why.
+Reviewer (`isr-science-reviewer`): its verdict, its findings and what was
+done about each. Or: "not requested".
 
 ## Code review
 
@@ -52,5 +50,5 @@ date), and for gate B: moved to the merge date before the merge.
 ## Decision
 
 - Gate A: passed on `<date>`, merged in `<merge sha>`.
-- Gate B: approved by `<name>` on `<date>`, merged in `<merge sha>`; or
+- Gate B: reviewed and approved by Henrik on `<date>`, merged in `<merge sha>`; or
   waiting for approval.
