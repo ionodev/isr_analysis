@@ -65,6 +65,14 @@ this branch applies; record `review/records/2026-10-12-apply-review-decisions.md
   `background_column` and `outlier_rejection` are read from the configuration
   too. Without these keys nothing changes (d579402).
 
+### Process
+- The regression benchmark no longer expects an LPI file for zenith-l period
+  11008, which holds only wrong-antenna pulses and rightly gives none since
+  pull request #4; every benchmark against `main` had ended invalid (exit 2)
+  for this alone. The period is still run (`lpi_no_output` in
+  `review/benchmark.json`). Period 10812's label corrected: not quiet
+  (d65606e).
+
 ## 2026-10-03
 
 ### Process

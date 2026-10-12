@@ -237,7 +237,11 @@ def expected(out):
     t = lambda ai: int((b0 + ai * AVG * 10**6) / 1e6)
     missing = []
     for ch, per in BENCH["lpi"].items():
+        # periods that are run but rightly give no file (benchmark.json)
+        none = set(BENCH.get("lpi_no_output", {}).get(ch, []))
         for ai in per:
+            if ai in none:
+                continue
             f = os.path.join(out, "lpi_%d" % LPI["rg"], ch, "lpi-%d.h5" % t(int(ai)))
             if not os.path.exists(f):
                 missing.append(os.path.relpath(f, out))
