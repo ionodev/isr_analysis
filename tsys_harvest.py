@@ -194,7 +194,8 @@ def attach_pointing(rows, datadir):
             r["az"] = az[i]
             r["el"] = el[i]
         r["tmid"] = tmid[i]
-        # 1 = MISA, -1 = zenith, as millstone_radar_state defines it
+        # 1 = MISA, -1 = zenith, 0 = unknown (around an antenna change), as
+        # millstone_radar_state defines it
         r["tx_antenna"] = tx_ant[i]
         r["rx_antenna"] = rx_ant[i]
     return rows

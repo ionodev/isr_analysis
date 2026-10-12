@@ -128,6 +128,30 @@ def estimate_dc(d_il,tmm,sid,channel):
     return(z_dc)
     
 
+def invert_normal(ATA):
+    """
+    Error covariance (the inverse of the normal matrix ATA), and the indices
+    of the unknowns no measurement constrains.
+
+    Such an unknown (a zero column of the design matrix: at some lags the
+    lowest range gate of the first periods of a recording) makes ATA
+    singular, which used to lose the whole lag. Invert for the others and
+    give it NaN on the diagonal only, so that the NaN reaches the estimate
+    and variance of that unknown and nothing else. Only an exactly zero
+    diagonal counts as unconstrained: a NaN in ATA takes the plain inverse,
+    as before. With every unknown constrained this is the plain inverse.
+    """
+    d=n.real(n.diag(ATA))
+    unconstrained=n.where(d==0)[0]
+    if len(unconstrained)==0:
+        return n.linalg.inv(ATA),unconstrained
+    fi=n.where(d!=0)[0]
+    Sigma=n.zeros(ATA.shape,dtype=ATA.dtype)
+    Sigma[n.ix_(fi,fi)]=n.linalg.inv(ATA[n.ix_(fi,fi)])
+    Sigma[unconstrained,unconstrained]=n.nan
+    return Sigma,unconstrained
+
+
 def convolution_matrix(envelope, rmin=0, rmax=100):
     """
     we imply that the number of measurements is equal to the number of elements
@@ -865,8 +889,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # note that 1/sigma is taken earlier when forming mm_g and mm_e
                 ATm_e=BT.dot(mm_e)
 
-                # error covariance
-                Sigma=n.linalg.inv(ATA)
+                # error covariance, NaN for unknowns no measurement constrains
+                Sigma,unconstrained=invert_normal(ATA)
+                if len(unconstrained)>0:
+                    print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,len(unconstrained),unconstrained[:8].tolist()))
 
                 # ML estimate for ACF lag without ground clutter mitigation measures in place
                 xhat_e=n.dot(Sigma,ATm_e)
