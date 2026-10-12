@@ -8,7 +8,7 @@ config/*
 data/*
 !data/.gitkeep
 
-# diagnostic plots produced by plot_raw_voltage.py and friends
+# diagnostic plots produced by the plot_*.py scripts
 plots/
 
 # working notes are kept in the documents project (TODO.tex), not here

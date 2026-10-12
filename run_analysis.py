@@ -72,6 +72,8 @@ def run_fit_lpi(datadir, output_base, cfg, lpi_cfg, radar_freq_hz=440.2e6, table
         output_base=output_base,
         radar_freq_hz=radar_freq_hz,
         table_dir=table_dir,
+        # null (off), "absolute" or "significance": fit_lpi.space_object_flagged
+        space_object_cut=cfg.get("space_object_cut", None),
     )
 
 
