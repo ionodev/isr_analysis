@@ -46,3 +46,25 @@ def test_equal_weights_give_the_ordinary_least_squares_estimate():
     xw = n.linalg.solve(B.T @ B, B.T @ (m / sig))
     xo = n.linalg.lstsq(A, m, rcond=None)[0]
     assert n.allclose(xw, xo)
+
+
+def test_ols_covariance_is_the_sandwich():
+    from scipy import sparse
+    from outlier_lpi import ols_covariance, invert_normal
+    rng = n.random.default_rng(2)
+    A = rng.normal(size=(60, 4)) + 1j * rng.normal(size=(60, 4))
+    A[:, 2] = 0                                  # one unconstrained unknown
+    s = rng.uniform(0.5, 4, size=60)             # true noise level of each row
+    s0 = n.median(s)
+    B = sparse.csc_matrix(A / s0)
+    Sigma, unc = invert_normal((n.conj(B.T) @ B).toarray())
+    C = ols_covariance(Sigma, B, (s / s0) ** 2, unc)
+    # direct: (A^H A)^-1 A^H diag(s^2) A (A^H A)^-1 on the constrained unknowns
+    k = [0, 1, 3]
+    Ak = A[:, k]
+    P = n.linalg.inv(n.conj(Ak.T) @ Ak)
+    D = P @ n.conj(Ak.T) @ n.diag(s ** 2) @ Ak @ P
+    assert n.allclose(C[n.ix_(k, k)], D)
+    assert n.isnan(C[2, 2]) and n.isfinite(C[n.ix_(k, k)]).all()
+    # with every row at the common level it is the nominal covariance
+    assert n.allclose(ols_covariance(Sigma, B, n.ones(60), unc)[n.ix_(k, k)], Sigma[n.ix_(k, k)])

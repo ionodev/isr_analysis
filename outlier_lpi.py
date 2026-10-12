@@ -136,14 +136,38 @@ def row_sigma(localized_sigma, msig, weighting):
     "variance": the local estimate, a running mean of |m|^2 over ten pulses
     (variance-weighted LPI). "equal": one common value, the median local
     estimate msig, for every row (ordinary least squares). With one value for
-    every row the weights cancel from the estimate, and the error covariance
-    is that of ordinary least squares with that noise level.
+    every row the weights cancel from the estimate, which is that of ordinary
+    least squares; its error covariance is ols_covariance's, not the nominal
+    one of the normal matrix.
     """
     if weighting=="variance":
         return localized_sigma
     if weighting=="equal":
         return n.full(localized_sigma.shape,msig,dtype=localized_sigma.dtype)
     raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
+
+
+def ols_covariance(Sigma, B, w, unconstrained):
+    """
+    Error covariance of the ordinary least squares estimate when the rows do
+    not all have the noise level the weights assumed.
+
+    With equal weights B = A/s0 for one common level s0, and Sigma = (B^H B)^-1
+    is the covariance only if every row has variance s0^2. A row with local
+    level s_i (a bright gate, a short lag, a satellite) has w_i = (s_i/s0)^2,
+    and the covariance of the estimate is the sandwich
+    Sigma (B^H diag(w) B) Sigma, which reduces to Sigma when every w_i = 1.
+    The unconstrained unknowns of invert_normal keep NaN on their diagonal
+    and nowhere else.
+    """
+    S=n.array(Sigma)
+    S[unconstrained,unconstrained]=0.0
+    BH=n.conj(B.T)
+    M=BH.dot(sparse.diags(w).dot(B))
+    M=M.toarray() if sparse.issparse(M) else n.asarray(M)
+    C=S.dot(M).dot(S)
+    C[unconstrained,unconstrained]=n.nan
+    return C
 
 
 def design_block(amb_rows, background_column):
@@ -840,6 +864,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     plt.colorbar()
                     plt.show()
 
+                # each row's local level, for the covariance under equal weights
+                local_sigma=n.ravel(localized_sigma).copy()
                 sigma_lp_est=row_sigma(localized_sigma,msig,weighting)
                 sigma_lp_est.shape=(len(mm_g),)
 
@@ -928,6 +954,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
                 # ML estimate for ACF lag with ground clutter mitigation measures            
                 xhat_g=n.dot(Sigma,ATm_g)
+
+                if weighting=="equal":
+                    # the estimate is ordinary least squares, but the rows do
+                    # not share one noise level: the covariance from each
+                    # row's local level (in the same scaled unknowns as Sigma)
+                    Sigma=ols_covariance(Sigma,B,(local_sigma[gidx]/msig)**2.0,unconstrained)
 
                 if n_sat > 0:
                     # back from the scaled unknowns
