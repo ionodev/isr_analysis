@@ -41,3 +41,5 @@ def test_unknown_cut_is_refused():
         space_object_flagged(100.0, 10.0, "two sigma")
     with pytest.raises(ValueError):
         fit_lpi.fit_lpifiles(dirn="/nonexistent", space_object_cut="two sigma")
+    with pytest.raises(ValueError):
+        fit_ionline.fit_lpifiles(dirn="/nonexistent", space_object_cut="two sigma")

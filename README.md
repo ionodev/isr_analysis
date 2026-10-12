@@ -66,8 +66,13 @@ Unwanted signals are handled on the way:
   discarding the affected data.
 - **Outliers** in the lagged products are rejected statistically. Ground
   clutter is removed pulse to pulse.
-- **Power-line spark impulses** can be blanked (`impulse_blanking.py`, off by
-  default).
+- **Hard targets in the fit.** `fit_lpi.py` can also leave out range gates
+  whose ACF is too narrow for plasma (`space_object_cut` in the `fit_lpi`
+  section of the configuration). It is off by default, since the catalogue and
+  the satellite columns handle satellites earlier. `"absolute"` is the
+  original test (Doppler width below 300 m/s and its uncertainty below
+  100 m/s); `"significance"` asks for the width to be below 300 m/s at three
+  standard deviations.
 
 `run_analysis.py` runs the steps enabled in a JSON configuration file.
 
@@ -97,9 +102,7 @@ account on the analysis server and run the pipeline there.
 | `radar_timing.py`, `millstone_radar_state.py`, `tx_delay.py`, `tx_power.py` | pulse timing, antenna pointing, transmitter state |
 | `raw_reader.py` | fast reader for the raw data |
 | `single_pulse_satellite_cfar.py`, `satellite_columns.py` | satellite detection and fitting |
-| `impulse_blanking.py`, `sky_noise_model.py` | interference blanking, sky noise |
 | `plot_*.py` | diagnostic plots of raw data, ACFs and profiles |
-| `validate_*.py` | tests of the methods on real and injected data |
 | `test_*.py` | unit tests (`python3 -m pytest`) |
 
 ## Documentation

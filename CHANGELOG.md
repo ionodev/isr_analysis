@@ -23,7 +23,28 @@ conflict here; resolve by keeping all the entries.
 
 ## Waiting for gate B (on branches, not merged)
 
-Nothing at the moment.
+### Changed
+Branch `apply-review-decisions`: Henrik's review of every change on `main`
+against Juha's repository, by category (`documents/overview/repo_comparison.tex`,
+12 October). He approved categories 1-3 except for the points below, which
+this branch applies; record `review/records/2026-10-12-apply-review-decisions.md`.
+- **The space-object cut of `fit_lpi.py` is off by default**
+  (`space_object_cut`, also in the `fit_lpi` configuration). Satellites are
+  handled by the CFAR catalogue and the satellite columns; left on, the
+  ACF-domain cut would remove satellite gates after every method being
+  compared. `"absolute"` (Juha's test) and `"significance"` (width + 3 sigma <
+  300 m/s, the previous default) can be switched on. Effect: gates the cut
+  used to flag are fitted again (da1bdac).
+- **Removed:** the zenith beam constants (superseded by Memo 37, unused), the
+  delay refinement of the satellite catalogue (no effect on the plasma, Memo
+  29), and impulse blanking (to be replaced by impulses as unknowns in the
+  inversion). No effect on default products (da1bdac).
+
+### Process
+- The analysis and validation scripts (category 4: `validate_*.py`,
+  `compare_tsys_sky.py`, `sky_noise_model.py`, `tsys_harvest.py`,
+  `plot_raw_voltage.py`) leave `main` for now; they are kept on the branch
+  `main-before-review-2026-10-03`. The unit tests stay (da1bdac).
 
 ## 2026-10-02
 
