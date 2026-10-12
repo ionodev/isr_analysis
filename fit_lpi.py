@@ -166,6 +166,35 @@ def propagate_te_ne(res,cov,ne_const):
     return(dte,dne)
 
 
+# the space object cut of fit_lpifiles: a gate whose ACF has a Doppler width
+# far narrower than thermal plasma (300 m/s) holds a hard target, and it and
+# its neighbours are left out of the fit. Off by default: satellites are
+# handled earlier, by the single pulse CFAR catalogue and the satellite columns
+# of the inversion. Two versions can be switched on:
+#   "absolute"     width < 300 and its uncertainty < 100 m/s, Juha's test. Its
+#                  second cut is an absolute number tuned to the uncertainties
+#                  before the covariance repair (memo 6.1) and the complex
+#                  variance fix (memo 6.8) shrank them, so it now flags more
+#                  gates than it did when it was tuned (1 -> 2 of 5520 fits,
+#                  memo 6.7).
+#   "significance" width + 3 sigma < 300 m/s: the width below the threshold at
+#                  three of its own standard deviations, which keeps the
+#                  strictness the absolute test was tuned at (memo 6.7; three,
+#                  not two, after the complex variance fix). A tuning choice
+#                  checked on one 300 s period, not a derived value.
+SPACE_OBJECT_CUTS=(None,"absolute","significance")
+
+def space_object_flagged(width,dwidth,cut):
+    """ True if a gate's Gaussian ACF width (m/s) and its uncertainty mark a hard target under cut """
+    if cut is None:
+        return(False)
+    if cut == "absolute":
+        return(width < 300.0 and dwidth < 100.0)
+    if cut == "significance":
+        return((width + 3.0*dwidth) < 300.0)
+    raise ValueError("space_object_cut must be one of %s, not %r"%(SPACE_OBJECT_CUTS,cut))
+
+
 def fit_gaussian(acf,lags,var,var_scale=4.0,guess=n.array([0,10]),plot=False):
     """
     Fit a gaussian to judge if there is a space object
@@ -640,7 +669,14 @@ def fit_lpifiles(dirn="lpi_f",
                  first_lag=0,
                  output_base=None,
                  radar_freq_hz=440.2e6,
-                 table_dir=None):
+                 table_dir=None,
+                 # leave out gates whose ACF looks like a hard target: None
+                 # (off), "absolute" or "significance"; see
+                 # space_object_flagged
+                 space_object_cut=None):
+
+    if space_object_cut not in SPACE_OBJECT_CUTS:
+        raise ValueError("space_object_cut must be one of %s, not %r"%(SPACE_OBJECT_CUTS,space_object_cut))
 
 #    if zpm == None:
  #       def zpm(t):
@@ -777,26 +813,14 @@ def fit_lpifiles(dirn="lpi_f",
             ao=n.copy(a)
             vo=n.copy(v)            
             for ri in range(acf.shape[0]):
-                if n.sum(n.isnan(a[ri,:]))/len(lag) < 0.5 and rgs[ri] > 250.0:
+                if space_object_cut is not None and n.sum(n.isnan(a[ri,:]))/len(lag) < 0.5 and rgs[ri] > 250.0:
                     #print(rgs[ri])
                     try:
                         gres,gsigma=fit_gaussian(ao[ri,:],lag,n.real(n.abs(vo[ri,:])),plot=False)
-                    
-                        # three sigma, not two: the per-component variance fix
-                        # shrank gsigma by sqrt(2), so the cut that preserves the
-                        # strictness this was tuned at is 2*sqrt(2). At two sigma
-                        # the detector starts flagging gates barely above the
-                        # profile median; at three it selects the same bright
-                        # gates as before the fix.
+
                         # a Doppler width this narrow is not thermal plasma, so
-                        # the gate holds a hard target. requiring the width to be
-                        # below the threshold at two sigma, rather than pairing
-                        # an absolute width cut with an absolute cut on its
-                        # uncertainty, keeps the test independent of the scale of
-                        # the error bars: the previous form flagged twice as many
-                        # gates once the fit covariance was repaired, because the
-                        # uncertainties shrank under a cut tuned to the old ones.
-                        if (gres[0] + 3.0*gsigma[0]) < 300.0:
+                        # the gate holds a hard target (space_object_flagged)
+                        if space_object_flagged(gres[0],gsigma[0],space_object_cut):
                             print("debris at %1.0f km dopp width %1.0f+/-%1.0f (m/s)"%(rgs[ri],gres[0],gsigma[0]))
                             # make neighbouring range gates contaminated
                             
@@ -1030,7 +1054,9 @@ def fit_lpifiles(dirn="lpi_f",
 
         ho["space_object_count"]=space_object_count
         ho["space_object_times"]=space_object_times
-        ho["space_object_rgs"]=space_object_rgs        
+        ho["space_object_rgs"]=space_object_rgs
+        # which space object cut produced the three above; "none" when off
+        ho["space_object_cut"]=space_object_cut if space_object_cut is not None else "none"
         ho.close()
             
 

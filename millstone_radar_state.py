@@ -7,13 +7,6 @@ radar_lat=42.61932878636544
 radar_lon=-71.49124624803031
 radar_hgt=146.0
 
-# The zenith antenna does not point at the geodetic zenith: its beam is at
-# elevation 88.16 deg, azimuth 172.9 deg (memo 7), from satellite echoes and
-# confirmed by the transit of Cygnus A. The metadata report 90 deg. The angular
-# uncertainty of this fit has not been estimated (memo 23 depends on it).
-ZENITH_BEAM_EL_DEG=88.16
-ZENITH_BEAM_AZ_DEG=172.9
-
 def get_tx_power_model(dirn,plot=False):
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)

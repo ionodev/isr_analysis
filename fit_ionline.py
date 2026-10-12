@@ -16,6 +16,8 @@ import glob
 import stuffr
 # power meter reading
 import tx_power as txp
+# the space object cut is shared with fit_lpi.py, so the two fits cannot drift
+from fit_lpi import SPACE_OBJECT_CUTS, space_object_flagged
 import os
 
 #import optuna
@@ -564,7 +566,14 @@ def fit_lpifiles(dirn="lpi_f",
                  range_avg=n.array([0,  1,  2]),          # range averaging window in range gates symmetric windows are used (ri-window):(ri+window) with range**2.0 weighting
                  first_lag=0,
                  radar_freq_hz=440.2e6,
-                 table_dir=None):
+                 table_dir=None,
+                 # leave out gates whose ACF looks like a hard target: None
+                 # (off), "absolute" or "significance"; see
+                 # fit_lpi.space_object_flagged
+                 space_object_cut=None):
+
+    if space_object_cut not in SPACE_OBJECT_CUTS:
+        raise ValueError("space_object_cut must be one of %s, not %r"%(SPACE_OBJECT_CUTS,space_object_cut))
 
     _init_tables(radar_freq_hz, table_dir=table_dir)
 
@@ -651,17 +660,13 @@ def fit_lpifiles(dirn="lpi_f",
             ao=n.copy(a)
             vo=n.copy(v)            
             for ri in range(acf.shape[0]):
-                if n.sum(n.isnan(a[ri,:]))/len(lag) < 0.5 and rgs[ri] > 250.0:
+                if space_object_cut is not None and n.sum(n.isnan(a[ri,:]))/len(lag) < 0.5 and rgs[ri] > 250.0:
                     #print(rgs[ri])
                     gres,gsigma=fit_gaussian(ao[ri,:],lag,n.real(n.abs(vo[ri,:])),plot=False)
-                    
-                    # narrow at three sigma: the variance convention fix shrank
-                    # gsigma by sqrt(2), so three preserves the strictness the
-                    # detector was tuned at. rather than an absolute width cut
-                    # paired with an absolute cut on its uncertainty, so the test
-                    # does not depend on the scale of the error bars. see the
-                    # same change in fit_lpi.py.
-                    if (gres[0] + 3.0*gsigma[0]) < 300.0:
+
+                    # a Doppler width this narrow is not thermal plasma, so the
+                    # gate holds a hard target (fit_lpi.space_object_flagged)
+                    if space_object_flagged(gres[0],gsigma[0],space_object_cut):
                         print("debris at %1.0f km dopp width %1.0f+/-%1.0f (m/s)"%(rgs[ri],gres[0],gsigma[0]))
                         # make neighbouring range gates contaminated
 
@@ -878,6 +883,8 @@ def fit_lpifiles(dirn="lpi_f",
         ho["space_object_count"]=space_object_count
         ho["space_object_times"]=space_object_times
         ho["space_object_rgs"]=space_object_rgs        
+        # which space object cut produced the three above; "none" when off
+        ho["space_object_cut"]=space_object_cut if space_object_cut is not None else "none"
         ho.close()
             
 
