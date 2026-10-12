@@ -25,6 +25,15 @@ conflict here; resolve by keeping all the entries.
 
 Nothing at the moment.
 
+## 2026-10-03
+
+### Process
+- Gate B is Henrik's own review of the pull request; the AI scientific
+  review and the full verification are no longer required, and run only when
+  Henrik asks. The aim of the process is code good enough to be a testbed
+  for the satellite and RFI mitigation methods (Henrik's project policy).
+  Pull request (this branch, gate-b-by-henrik).
+
 ## 2026-10-02
 
 ### Fixed
