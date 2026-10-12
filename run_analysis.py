@@ -34,6 +34,22 @@ if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and n
 os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
 
+def barrier():
+    """
+    Wait until every MPI rank has finished the current step. Each rank does
+    its own share of a step and then goes on to the next, so without this a
+    rank starts fit_lpi (or fit_lp) while others are still writing the files
+    it groups: the fit windows then depend on timing, and some are fitted
+    from incomplete groups (seen on 12 October in the variant runs). Without
+    mpi4py, or with one process, it does nothing.
+    """
+    try:
+        from mpi4py import MPI
+    except ImportError:
+        return
+    MPI.COMM_WORLD.Barrier()
+
+
 def load_config(path):
     with open(path) as f:
         return json.load(f)
@@ -174,6 +190,7 @@ def main():
     if lpi_cfg.get("enabled", False):
         print("=== Step: LPI (lag-profile inversion) ===")
         run_lpi(datadir, output_base, lpi_cfg, max_time_s=max_time_s)
+        barrier()
 
     if steps.get("fit_lpi", {}).get("enabled", False):
         if not lpi_cfg:
@@ -186,6 +203,7 @@ def main():
     if lp_cfg.get("enabled", False):
         print("=== Step: long_pulse (range-Doppler spectra) ===")
         run_long_pulse(datadir, output_base, lp_cfg, max_time_s=max_time_s)
+        barrier()
 
     if steps.get("fit_lp", {}).get("enabled", False):
         if not lp_cfg:
