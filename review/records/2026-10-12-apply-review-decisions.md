@@ -67,16 +67,21 @@ into the fit instead of being blanked (the open TODO decision "Mask or flag
 the zenith gates at 535-590 km?"). With the columns, the comparison methods
 handle them.
 
-## Scientific review (gate B, and memos with results)
+## Summary for Henrik's review (gate B)
 
-Henrik's own review (policy of 3 October): the decisions are his; the
-evidence for each is in `repo_comparison.tex` and the discussion of 12
-October. No AI scientific review requested.
+What was wrong: nothing was wrong as such. These are your decisions on
+changes that reached `main` without your review. What changes in the
+products: only the `fit_lpi` fits, at the gates the space-object cut used to
+blank (14 gates in 5 `zenith-l` benchmark fits, 13 of them at 495-567 km).
+They are now fitted, and in a run without the satellite columns they carry
+the satellite echo. Evidence: the benchmark above, every difference at a
+flagged gate, 70 of 80 files bit-identical. Not checked: an end-to-end
+`run_analysis.py` run with the new key; the benchmark tool's expected list
+(period 11008).
 
-## Full verification (when flagged, and always for calibration)
+## Scientific review (only if Henrik asked for one)
 
-Not needed: no calibration changes, and the effect is the removal of an
-option's default, confined to the flagged gates.
+Not requested.
 
 ## Code review
 
@@ -103,4 +108,4 @@ the merge.
 
 - Gate A: tests and code review passed; benchmark valid but for the tool's
   expected-output list (above).
-- Gate B: waiting for Henrik's approval of the pull request.
+- Gate B: waiting for Henrik's review and approval of pull request #8.
