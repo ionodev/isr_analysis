@@ -1,18 +1,33 @@
 # Review process for changes to `main`
 
-Nothing is merged into `main` until it has passed the review below. The aim
+Nothing is merged into `main` until it has passed the review below and Henrik
+has approved its pull request (documentation excepted). The aim
 is that the code on `main` is free of known bugs and gives correct results.
 The process was agreed on 2026-09-30. It applies to everyone who changes the
 code, including Claude sessions, supervised or autonomous.
 
 ## 1. The two gates
 
+In short (Henrik, 2026-10-02):
+
+| Change | Where it goes |
+|---|---|
+| Output-neutral code (gate A) | reviewed on its branch; merged into `main` only through a pull request that Henrik reviews and approves |
+| Product-changing code (gate B) | the same, after gate B |
+| The review tooling | the same |
+| Documentation only (Markdown, LaTeX) | committed to `main` directly, no pull request |
+
+Every change to `main` except documentation goes through a pull request that
+Henrik approves. Gate A and gate B prepare a branch for it; neither merges
+anything by itself.
+
+
 Every code change goes through **gate A**: tests, the benchmark, an
 independent code review, and a review record. The benchmark then decides
 whether the change also needs **gate B**:
 
 - **The outputs are bit-identical** (the change is *output-neutral*): gate A
-  is enough, and the change is merged without further approval. Examples:
+  is enough, and the change goes to a pull request for Henrik's approval. Examples:
   new scripts, tests, refactoring, speed-ups, new options that are off by
   default.
 - **Some output differs** (the change is *product-changing*): gate B follows.
@@ -43,9 +58,10 @@ gate B. Changes to how the tables are generated always do.
 
 Changes to the review tooling itself (`review/regression.py`,
 `review/benchmark.json`, `.claude/agents/`, this file) need Henrik's
-approval.
+approval, through a pull request.
 
-Changes to documentation only (Markdown, LaTeX) need no gate. A `.py` change
+Changes to documentation only (Markdown, LaTeX) need no gate and no pull
+request: they are committed to `main` directly. A `.py` change
 that is meant to touch comments only still goes through gate A, because
 someone has to confirm that it does.
 
@@ -94,7 +110,8 @@ someone has to confirm that it does.
    how).
    Documentation-only merges, which need no gate, still add a Process
    entry.
-5. **Merge, if output-neutral.** Right before merging, check that `main` has
+5. **Pull request, if output-neutral.** Open a pull request (section 7) with
+   the record's content; after Henrik's approval, merge. Right before merging, check that `main` has
    not moved since the benchmark: `git merge-base --is-ancestor main <tested
    commit>`. If it has, merge `main` into the branch and repeat the
    benchmark, unless the new commits on `main` change only Markdown or LaTeX
@@ -103,8 +120,8 @@ someone has to confirm that it does.
    (`git diff --name-only <tested commit> <branch>`). The agent files in
    `.claude/agents/` are Markdown too; they change the reviews, not the
    outputs. Then merge into `main` with a merge commit that names the
-   record, and push `main` and the branch. A product-changing change goes on
-   to gate B instead.
+   record and the pull request, and push `main` and the branch. A
+   product-changing change goes on to gate B instead.
 
 ## 3. Gate B: in addition, for changes that alter the products
 
@@ -284,9 +301,16 @@ September 2026).
 
 ## 7. Pull requests
 
-The review record in the branch is the durable record of the review. Gate-B
-changes also get a pull request, so that Henrik can read and approve them on
-GitHub, and share them with Juha when he wants his input. Gate-A changes may have one. Pull requests are opened within
+The review record in the branch is the durable record of the review. Every
+change to `main` except documentation is merged only through a pull request,
+which Henrik reviews and approves: gate-A changes, gate-B changes and changes
+to the review tooling alike. Approval in chat beforehand does not replace
+it. He may share it with Juha when he wants his input. Documentation
+(Markdown, LaTeX) is committed to `main` directly, without one.
+
+GitHub does not let Henrik approve a pull request opened under his own
+account. He approves by merging it himself, or by saying so in chat, after
+which Claude merges it. Pull requests are opened within
 the fork, branch into `main`, never against `jvierine/isr_analysis`. The
 repository is a fork, and `gh` would otherwise offer the parent as the
 target, so always pass `--repo`:
@@ -303,10 +327,10 @@ merge with a merge commit, either locally (then push) or with
 ## 8. Autonomous runs
 
 Autonomous Claude runs (see `~/isr_project/AUTONOMOUS_RUNS.md`) follow the
-same gates. They may merge output-neutral changes themselves once gate A is
-passed, with the `isr-code-reviewer` agent as the independent reviewer. They push gate-B branches without merging them, with
-the benchmark report and the verification ready in the record, and they may
-open the pull request.
+same gates, with the `isr-code-reviewer` agent as the independent reviewer.
+They merge nothing into `main`: they push each reviewed branch, with the
+benchmark report and the verification ready in the record, and open its pull
+request for Henrik's approval. They may commit documentation to `main`.
 
 They also run the scientific review (section 5) on every memo they write
 that reports results, with the `isr-science-reviewer` agent. They fix what
