@@ -4,9 +4,9 @@
   "table_dir": "/home/henrik/isr_project/isr_analysis/data",
   "lpi": {
     "zenith-l": {
-      "10812": "quiet, inside a zenith cycle (8 Apr 16:02)",
+      "10812": "inside a zenith cycle of the Starlink hour (8 Apr 16:02); not quiet: 352 catalogued echoes",
       "10830": "cycle change, about a quarter wrong-antenna pulses (Memo 30)",
-      "11008": "made only of wrong-antenna pulses (Memo 30)",
+      "11008": "made only of wrong-antenna pulses (Memo 30); no output expected since antenna-switch-gap (lpi_no_output)",
       "10471": "power-line impulses (Memo 21)",
       "3070": "long bright Starlink pass (Memo 16)",
       "1471": "quiet night (Memo 21)",
@@ -19,6 +19,10 @@
       "2": "start of the recording, lost lags (TODO item 17)"
     }
   },
+  "lpi_no_output": {
+    "zenith-l": ["11008"]
+  },
+  "lpi_no_output_note": "periods that are run but rightly give no LPI file: 11008 holds only wrong-antenna pulses, which the antenna guard skips (pull request #4). A file appearing for one of them shows as a difference between base and commit",
   "fit_lpi": {
     "zenith-l": [
       10994,
