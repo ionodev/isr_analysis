@@ -7,7 +7,8 @@ Usage:
     mpirun -np 8 python run_analysis.py <config.json>
 
 Steps in the pipeline:
-    lpi         - Lag-profile inversion (coded long pulse, ACF estimation)
+    lpi         - Lag-profile inversion (coded long pulse, ACF estimation),
+                  optionally with the catalogued satellite echoes as unknowns
     fit_lpi     - Fit ACFs to plasma parameters
     long_pulse  - Range-Doppler spectra (uncoded long pulse)
     fit_lp      - Fit Doppler spectra to plasma parameters
@@ -38,6 +39,37 @@ def load_config(path):
         return json.load(f)
 
 
+def satellite_detections(datadir, cfg):
+    """
+    The satellite stage of the lpi step: the catalogued echoes of the
+    channel, for outlier_lpi to model as extra unknowns, one column per echo.
+    None when the configuration has no enabled "satellites" section.
+
+        "satellites": {
+            "catalogue": path of the single pulse CFAR catalogue (Digital
+                         Metadata, single_pulse_satellite_cfar.py),
+            "channel_delay_us": tx-h to echo channel delay; null measures it
+                         from the data (tx_delay.py),
+            "min_snr_db": only echoes at least this strong (optional),
+            "enabled": true (optional)
+        }
+    """
+    sat = cfg.get("satellites")
+    if not sat or not sat.get("enabled", True):
+        return None
+    import satellite_columns as satcol
+    delay = sat.get("channel_delay_us")
+    if delay is None:
+        import tx_delay
+        delay = tx_delay.estimate_channel_delay(datadir, cfg["channel"], verbose=False)[0]
+        if delay is None:
+            raise RuntimeError("the channel delay of %s could not be measured; give satellites.channel_delay_us"
+                               % cfg["channel"])
+    print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
+    return satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
+                                      min_snr_db=sat.get("min_snr_db"))
+
+
 def run_lpi(datadir, output_base, cfg, max_time_s=None):
     import outlier_lpi as olpi
     olpi.lpi_files(
@@ -54,6 +86,14 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         reanalyze=cfg.get("reanalyze", False),
         output_base=output_base,
         max_time_s=max_time_s,
+        # the LPI variant (defaults: variance weights, background column,
+        # outlier rejection)
+        weighting=cfg.get("weighting", "variance"),
+        background_column=cfg.get("background_column", True),
+        outlier_rejection=cfg.get("outlier_rejection", True),
+        # the satellite stage, and the periods to analyse (None for all)
+        satellite_detections=satellite_detections(datadir, cfg),
+        periods=cfg.get("periods", None),
     )
 
 

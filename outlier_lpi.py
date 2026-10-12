@@ -127,6 +127,62 @@ def estimate_dc(d_il,tmm,sid,channel):
     return(z_dc)
     
 
+WEIGHTINGS=("variance","equal")
+
+def row_sigma(localized_sigma, msig, weighting):
+    """
+    Standard deviation of each lagged product, as the least squares weights it.
+
+    "variance": the local estimate, a running mean of |m|^2 over ten pulses
+    (variance-weighted LPI). "equal": one common value, the median local
+    estimate msig, for every row (ordinary least squares). With one value for
+    every row the weights cancel from the estimate, which is that of ordinary
+    least squares; its error covariance is ols_covariance's, not the nominal
+    one of the normal matrix.
+    """
+    if weighting=="variance":
+        return localized_sigma
+    if weighting=="equal":
+        return n.full(localized_sigma.shape,msig,dtype=localized_sigma.dtype)
+    raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
+
+
+def ols_covariance(Sigma, B, w, unconstrained):
+    """
+    Error covariance of the ordinary least squares estimate when the rows do
+    not all have the noise level the weights assumed.
+
+    With equal weights B = A/s0 for one common level s0, and Sigma = (B^H B)^-1
+    is the covariance only if every row has variance s0^2. A row with local
+    level s_i (a bright gate, a short lag, a satellite) has w_i = (s_i/s0)^2,
+    and the covariance of the estimate is the sandwich
+    Sigma (B^H diag(w) B) Sigma, which reduces to Sigma when every w_i = 1.
+    The unconstrained unknowns of invert_normal keep NaN on their diagonal
+    and nowhere else.
+    """
+    S=n.array(Sigma)
+    S[unconstrained,unconstrained]=0.0
+    BH=n.conj(B.T)
+    M=BH.dot(sparse.diags(w).dot(B))
+    M=M.toarray() if sparse.issparse(M) else n.asarray(M)
+    C=S.dot(M).dot(S)
+    C[unconstrained,unconstrained]=n.nan
+    return C
+
+
+def design_block(amb_rows, background_column):
+    """
+    One pulse's rows of the design matrix for one lag: the ambiguity function
+    over the range gates, and, when background_column is True, a column of
+    ones for a background process that is the same at every range (an extra
+    unknown per lag, as in Virtanen et al., 2014).
+    """
+    if not background_column:
+        return amb_rows
+    O=n.ones((amb_rows.shape[0],1),dtype=n.complex64)
+    return n.hstack([amb_rows,O])
+
+
 def invert_normal(ATA):
     """
     Error covariance (the inverse of the normal matrix ATA), and the indices
@@ -226,7 +282,21 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # second of data, instead of digital_rf's several small reads per
               # pulse. The samples are identical; False uses DigitalRFReader.
               fast_read=True,
+              # how the lagged products are weighted in the least squares:
+              # "variance" by each product's local noise level
+              # (variance-weighted LPI, as before); "equal" by one common
+              # level for all of them (ordinary least squares)
+              weighting="variance",
+              # the column of ones: an extra unknown per lag for a background
+              # process that is the same at every range (Virtanen et al.,
+              # 2014). False leaves it out.
+              background_column=True,
               ):
+    if weighting not in WEIGHTINGS:
+        raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
+    # the unknowns are the plasma gates, the background if any, then the
+    # satellites
+    n_bg=1 if background_column else 0
     if output_base is None:
         output_base = dirname
     print("mkdir -p %s/lpi_%d/%s"%(output_base,rg,channel))
@@ -611,11 +681,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     # no gc removal
                     mease=decim.decimate(z_echo[0:(len(z_echo)-lags[li+ai])]*n.conj(z_echo[lags[li+ai]:len(z_echo)]))
 
-                    #TM=amb[idxms[li]]
-                    # add a column of ones to allow an additional noise process that is independent of range
-                    O=n.ones(m1,dtype=n.complex64)
-                    O.shape=(m1,1)
-                    TM=n.hstack([amb[idxms[li]],O])
+                    # the ambiguity function, and the column of ones that
+                    # allows an additional noise process independent of range
+                    TM=design_block(amb[idxms[li]],background_column)
                     TM=sparse.csc_matrix(TM[m0:m1,:])
 
                     mgs[li].append(measg[m0:m1])
@@ -796,7 +864,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     plt.colorbar()
                     plt.show()
 
-                sigma_lp_est=localized_sigma
+                # each row's local level, for the covariance under equal weights
+                local_sigma=n.ravel(localized_sigma).copy()
+                sigma_lp_est=row_sigma(localized_sigma,msig,weighting)
                 sigma_lp_est.shape=(len(mm_g),)
 
                 mm_gm.shape=(len(mm_g),)
@@ -885,6 +955,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # ML estimate for ACF lag with ground clutter mitigation measures            
                 xhat_g=n.dot(Sigma,ATm_g)
 
+                if weighting=="equal":
+                    # the estimate is ordinary least squares, but the rows do
+                    # not share one noise level: the covariance from each
+                    # row's local level (in the same scaled unknowns as Sigma)
+                    Sigma=ols_covariance(Sigma,B,(local_sigma[gidx]/msig)**2.0,unconstrained)
+
                 if n_sat > 0:
                     # back from the scaled unknowns
                     xhat_e=xhat_e/col_norm
@@ -897,15 +973,19 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # unknowns: the plasma gates, the background, then the satellites
                 n_pl=rmax-rmins[li]
                 acfs_e[ rmins[li]:rmax, li ]=xhat_e[0:n_pl]
-                noise_e[li]=xhat_e[n_pl]
                 acfs_g[ rmins[li]:rmax, li ]=xhat_g[0:n_pl]
-                noise_g[li]=xhat_g[n_pl]
+                if background_column:
+                    noise_e[li]=xhat_e[n_pl]
+                    noise_g[li]=xhat_g[n_pl]
+                else:
+                    noise_e[li]=n.nan
+                    noise_g[li]=n.nan
 
                 acfs_var[ rmins[li]:rmax, li ] = n.diag(Sigma.real)[0:n_pl]
                 if n_sat > 0:
-                    sat_amp_e[:,li]=xhat_e[(n_pl+1):]
-                    sat_amp_g[:,li]=xhat_g[(n_pl+1):]
-                    sat_amp_var[:,li]=n.diag(Sigma.real)[(n_pl+1):]
+                    sat_amp_e[:,li]=xhat_e[(n_pl+n_bg):]
+                    sat_amp_g[:,li]=xhat_g[(n_pl+n_bg):]
+                    sat_amp_var[:,li]=n.diag(Sigma.real)[(n_pl+n_bg):]
             except:
                 traceback.print_exc()
                 print("something went wrong.")
@@ -962,6 +1042,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             # the same file as before
             if satellite_detections is not None or not outlier_rejection:
                 ho["outlier_rejection"]=outlier_rejection
+            # the LPI variant, written only when not at its default
+            if weighting!="variance":
+                ho["weighting"]=weighting
+            if not background_column:
+                ho["background_column"]=False
             if satellite_detections is not None:
                 # one entry per satellite column: the pulse, and the delay
                 # (samples, relative to the transmit template) and Doppler (Hz)

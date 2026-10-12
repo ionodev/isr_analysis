@@ -48,6 +48,23 @@ this branch applies; record `review/records/2026-10-12-apply-review-decisions.md
 
 ## 2026-10-12
 
+### Added
+- **The LPI variants of the weeks 7-9 comparison** (Henrik, 12 October):
+  `outlier_lpi.lpi_files` takes `weighting` (`"variance"`, the default as
+  before, or `"equal"`: ordinary least squares, one common noise level for
+  every lagged product, with the error covariance from each product's own
+  level) and `background_column` (`True`, the default as before, or `False`:
+  no column of ones). With the satellite columns this gives the five variants:
+  equal weights; variance-weighted; with the background column; with the
+  satellite columns; with both. No effect on default products (fc0eb49,
+  07963e6).
+- **The satellite stage of the lpi step**: a `satellites` section in the lpi
+  configuration (catalogue path, channel delay given or measured, minimum
+  SNR) makes `run_analysis.py` model the catalogued echoes as unknowns, and
+  `periods` restricts a run to chosen integration periods; `weighting`,
+  `background_column` and `outlier_rejection` are read from the configuration
+  too. Without these keys nothing changes (d579402).
+
 ### Process
 - The regression benchmark no longer expects an LPI file for zenith-l period
   11008, which holds only wrong-antenna pulses and rightly gives none since
