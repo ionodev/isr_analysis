@@ -54,6 +54,11 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         reanalyze=cfg.get("reanalyze", False),
         output_base=output_base,
         max_time_s=max_time_s,
+        # the LPI variant (defaults: variance weights, background column,
+        # outlier rejection)
+        weighting=cfg.get("weighting", "variance"),
+        background_column=cfg.get("background_column", True),
+        outlier_rejection=cfg.get("outlier_rejection", True),
     )
 
 
