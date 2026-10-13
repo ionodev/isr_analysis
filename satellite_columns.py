@@ -26,7 +26,11 @@ change with lag, which is the check that the echo was a coherent target.
 
     satellite_template()   the synthetic, filtered echo of one detection
     template_lag_column()  its decimated lagged product at one lag
+    refine_delay()         a catalogue delay refined below the catalogue's grid
     CatalogueDetections    detections from the single pulse catalogue
+    TrackedDetections      the catalogue's detections linked into passes,
+                           with columns for the pulses of a pass the
+                           detector missed
 """
 
 import numpy as n
@@ -111,6 +115,47 @@ def template_lag_column(s, lag, decim, m0, m1):
     return decim.decimate(s[0:(len(s) - lag)] * n.conj(s[lag:len(s)]))[m0:m1]
 
 
+def refine_delay(echo, tx, raw_delay, doppler_hz, tx0, tx1, search=12, sr=1e6):
+    """
+    Refine a catalogue delay below its grid of 8 samples.
+
+    The catalogue matched filters a copy of the echo summed over blocks of 8
+    samples, so its raw_delay_sample is on that grid, +- 4 samples of the true
+    delay. Here the full rate echo is matched filtered with the pulse's own
+    tx-h samples, with the catalogue's Doppler removed, at every integer delay
+    within +- search samples of the catalogue's, and a parabola through the
+    peak power and its two neighbours gives the sub-sample delay.
+
+    echo, tx     the pulse's samples on the echo channel and on tx-h, from the
+                 pulse start
+    raw_delay    the catalogue's raw_delay_sample: where in echo the copy of
+                 tx[tx0:tx1] starts
+    returns      (refined raw delay, float, in the catalogue's frame; peak
+                 matched filter power over the power at the catalogue's delay)
+    """
+    t = n.asarray(tx[tx0:tx1], dtype=n.complex128)
+    t = t - n.mean(tx[0:tx0])
+    L = len(t)
+    ramp = n.exp(-2j * n.pi * doppler_hz * n.arange(L) / sr)
+    w = n.conj(t) * ramp
+    s0 = max(0, int(raw_delay) - search)
+    s1 = min(len(echo) - L, int(raw_delay) + search)
+    shifts = n.arange(s0, s1 + 1)
+    if len(shifts) < 3:
+        return float(raw_delay), 1.0
+    seg = n.lib.stride_tricks.sliding_window_view(n.asarray(echo, dtype=n.complex128), L)[s0:s1 + 1]
+    p = n.abs(seg @ w)**2
+    k = int(n.argmax(p))
+    frac = 0.0
+    if 0 < k < len(p) - 1:
+        den = p[k - 1] - 2 * p[k] + p[k + 1]
+        if den < 0:
+            frac = float(n.clip(0.5 * (p[k - 1] - p[k + 1]) / den, -0.5, 0.5))
+    i_cat = int(raw_delay) - s0
+    gain = float(p[k] / p[i_cat]) if 0 <= i_cat < len(p) and p[i_cat] > 0 else 1.0
+    return float(shifts[k] + frac), gain
+
+
 class CatalogueDetections:
     """
     Echoes from the single pulse satellite catalogue
@@ -124,7 +169,9 @@ class CatalogueDetections:
     instead of the fixed one.
 
     The catalogue searches a grid decimated by eight, so its delays are known
-    to +- 4 samples, +- 0.6 km in range. Nothing here refines them.
+    to +- 4 samples, +- 0.6 km in range. Given a reader, each delay is refined
+    below that grid from the raw samples (refine_delay); without one, they are
+    used as the catalogue gives them.
 
     for_period() returns {pulse key: [(delay_samples, doppler_hz), ...]}, the
     form outlier_lpi.lpi_files() takes. The optional windows restrict it to one
@@ -133,8 +180,10 @@ class CatalogueDetections:
     """
 
     def __init__(self, metadata_dir, channel, channel_delay_samples,
-                 t_window=None, range_window=None, min_snr_db=None):
+                 t_window=None, range_window=None, min_snr_db=None, refine_reader=None):
         self.reader = DigitalMetadataReader(metadata_dir)
+        # an rf reader (read_vector_1d) to refine the delays with, or None
+        self.refine_reader = refine_reader
         self.channel = channel
         self.channel_delay_samples = float(channel_delay_samples)
         self.t_window = t_window
@@ -142,6 +191,9 @@ class CatalogueDetections:
         self.min_snr_db = min_snr_db
 
     def for_period(self, i0, i1):
+        return {k: [(d[0], d[1]) for d in v] for k, v in self._detections(i0, i1).items()}
+
+    def _detections(self, i0, i1):
         if self.t_window is not None:
             i0 = max(i0, int(self.t_window[0] * 1e6))
             i1 = min(i1, int(self.t_window[1] * 1e6))
@@ -164,6 +216,162 @@ class CatalogueDetections:
                 if self.range_window is not None and not (
                         self.range_window[0] <= range_km <= self.range_window[1]):
                     continue
-                delay = float(raw) - tmm[int(sweep_id)]["tx0"] - self.channel_delay_samples
-                out.setdefault(int(key), []).append((delay, float(doppler_hz)))
+                raw = float(raw)
+                if self.refine_reader is not None:
+                    raw = self.refine(int(key), int(sweep_id), raw, float(doppler_hz))
+                delay = raw - tmm[int(sweep_id)]["tx0"] - self.channel_delay_samples
+                out.setdefault(int(key), []).append((delay, float(doppler_hz), float(snr_db)))
         return out
+
+    def rows(self, i0, i1):
+        """(pulse key, delay, Doppler, SNR dB) of every echo in [i0, i1)."""
+        return [(k, d[0], d[1], d[2]) for k, v in self._detections(i0, i1).items() for d in v]
+
+    def refine(self, key, sweep_id, raw, doppler_hz):
+        m = tmm[sweep_id]
+        n_read = int(raw) + (m["tx1"] - m["tx0"]) + 32
+        try:
+            echo = self.reader_rf(key, n_read, self.channel)
+            tx = self.reader_rf(key, m["tx1"], "tx-h")
+        except Exception:
+            return raw
+        return refine_delay(echo, tx, raw, doppler_hz, m["tx0"], m["tx1"])[0]
+
+    def reader_rf(self, key, length, channel):
+        return self.refine_reader.read_vector_1d(key, length, channel)
+
+
+class TrackedDetections:
+    """
+    Detections linked into passes, with a column for every pulse of a pass,
+    detected or not.
+
+    The single-pulse detector finds a pulse's echo only above about 19 dB
+    matched-filter SNR (end-to-end injection, 13 October), so the faint
+    pulses at the start and end of every pass get no column and bias the
+    plasma ACF. A satellite moves smoothly, so its delay and Doppler on the
+    pulses in between and around the detections follow from the detected
+    ones:
+
+      1. the detections of [i0 - margin, i1 + margin), in time order, are
+         linked into passes: a detection joins the pass whose predicted
+         delay (from its last detection, moved by its Doppler) is within
+         link_delay samples, whose Doppler is within link_doppler_hz, and
+         whose last detection is at most link_gap_s earlier;
+      2. a pass with at least min_detections detections gets delay(t) as a
+         quadratic, Doppler(t) as a line, and SNR(t) in dB as a parabola (a
+         beam crossing), fitted to its detections;
+      3. its span is extended beyond the first and last detection to where
+         the fitted SNR falls to extend_snr_db, at most max_extend_s; when
+         the SNR parabola does not open downward, by default_extend_s;
+      4. every pulse in the span gets a column at the fitted delay and
+         Doppler, except detected pulses, which keep their own.
+
+    Too long a span costs a little precision (a column without an echo fits
+    about zero); too short a span leaves the faint pulses' bias, so the
+    defaults lean long.
+
+    base       an object with rows(i0, i1) -> [(key, delay, Doppler, SNR dB)]
+               (CatalogueDetections, or a test's own)
+    pulse_keys a function (i0, i1) -> the pulse keys a column may be put on
+    """
+
+    def __init__(self, base, pulse_keys, link_delay=10.0, link_doppler_hz=1500.0, link_gap_s=1.5,
+                 min_detections=3, extend_snr_db=0.0, max_extend_s=3.0, default_extend_s=1.0,
+                 margin_s=10.0, sr=1e6):
+        self.base = base
+        self.pulse_keys = pulse_keys
+        self.link_delay = link_delay
+        self.link_doppler_hz = link_doppler_hz
+        self.link_gap_s = link_gap_s
+        self.min_detections = min_detections
+        self.extend_snr_db = extend_snr_db
+        self.max_extend_s = max_extend_s
+        self.default_extend_s = default_extend_s
+        self.margin = int(margin_s * sr)
+        self.sr = sr
+        self.last_passes = []
+
+    def passes(self, rows):
+        """Link detections (key, delay, Doppler, SNR) into passes: lists of rows."""
+        lam = 299792458.0 / 440.2e6
+        tracks = []
+        for r in sorted(rows, key=lambda x: x[0]):
+            k, d, f, _ = r
+            best, best_cost = None, None
+            for tr in tracks:
+                k0, d0, f0, _ = tr[-1]
+                dt = (k - k0) / self.sr
+                if dt > self.link_gap_s or dt < 0:
+                    continue
+                # delay rate in samples per second from the Doppler: -f lambda / c
+                pred = d0 - f0 * lam / 299792458.0 * self.sr * dt
+                dd, df = abs(d - pred), abs(f - f0)
+                if dd <= self.link_delay and df <= self.link_doppler_hz:
+                    cost = dd / self.link_delay + df / self.link_doppler_hz
+                    if best is None or cost < best_cost:
+                        best, best_cost = tr, cost
+            if best is None:
+                tracks.append([r])
+            else:
+                best.append(r)
+        return tracks
+
+    def span(self, tr):
+        """Fitted delay(t), Doppler(t) and the time span (keys) of a pass."""
+        k = n.array([r[0] for r in tr], dtype=float)
+        t = (k - k[0]) / self.sr
+        d = n.array([r[1] for r in tr])
+        f = n.array([r[2] for r in tr])
+        snr = n.array([r[3] for r in tr])
+        deg_d = 2 if len(tr) >= 5 and t[-1] > 0.5 else 1
+        pd = n.polyfit(t, d, deg_d) if t[-1] > 0 else n.array([d.mean()])
+        pf = n.polyfit(t, f, 1) if t[-1] > 0 else n.array([f.mean()])
+        ext0 = ext1 = self.default_extend_s
+        if len(tr) >= 5 and t[-1] > 0.5:
+            ps = n.polyfit(t, snr, 2)
+            if ps[0] < 0:
+                # times where the parabola equals extend_snr_db
+                roots = n.roots([ps[0], ps[1], ps[2] - self.extend_snr_db])
+                roots = n.real(roots[n.isreal(roots)])
+                if len(roots) == 2:
+                    ext0 = float(n.clip(0.0 - roots.min(), 0.0, self.max_extend_s))
+                    ext1 = float(n.clip(roots.max() - t[-1], 0.0, self.max_extend_s))
+        k0 = k[0] - ext0 * self.sr
+        k1 = k[-1] + ext1 * self.sr
+        return pd, pf, k[0], k0, k1
+
+    def for_period(self, i0, i1):
+        rows = self.base.rows(i0 - self.margin, i1 + self.margin)
+        detected = {}
+        for r in rows:
+            detected.setdefault(int(r[0]), []).append((r[1], r[2]))
+        out = {k: list(v) for k, v in detected.items() if i0 <= k < i1}
+        keys = n.array(sorted(self.pulse_keys(i0, i1)), dtype=n.int64)
+        self.last_passes = []
+        for tr in self.passes(rows):
+            if len(tr) < self.min_detections:
+                continue
+            pd, pf, kref, k0, k1 = self.span(tr)
+            own = set(int(r[0]) for r in tr)
+            sel = keys[(keys >= k0) & (keys <= k1)]
+            added = 0
+            for k in sel:
+                if int(k) in own:
+                    continue
+                t = (k - kref) / self.sr
+                out.setdefault(int(k), []).append((float(n.polyval(pd, t)), float(n.polyval(pf, t))))
+                added += 1
+            self.last_passes.append(dict(detections=len(tr), added=added, start=int(k0), stop=int(k1)))
+        return out
+
+
+def zenith_pulse_keys(data_dir):
+    """A pulse_keys function for TrackedDetections: the pulses of [i0, i1)
+    whose code is in the timing table."""
+    reader = DigitalMetadataReader("%s/metadata/id_metadata" % data_dir)
+
+    def keys(i0, i1):
+        sid = reader.read(int(i0), int(i1), "sweepid")
+        return [int(k) for k, v in sid.items() if int(v) in tmm]
+    return keys

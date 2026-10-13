@@ -18,6 +18,14 @@ columns get only what the real detector finds:
                perfect    every injected pulse, at its exact delay/Doppler
                realistic  the injected pulses the detector found, at the
                           detector's delay and Doppler
+               realistic_refined  the same, with each delay refined below
+                          the detector's 8-sample grid
+                          (satellite_columns.refine_delay; the real
+                          catalogue echoes stay unrefined, as in the clean
+                          run)
+               realistic_tracked  the detected ones linked into passes, with
+                          columns for every pulse of a pass
+                          (satellite_columns.TrackedDetections)
                none       none (variant 3: no satellite columns at all)
              Extra keywords for lpi_files (e.g. outlier_rejection=True)
              can follow as key=value and are added to the case's name.
@@ -150,17 +158,31 @@ def _detect_period(args):
 class PlanDetections:
     """The catalogue's real echoes plus the injected ones of a case."""
 
-    def __init__(self, extra):
+    def __init__(self, extra, tracker=None):
         import satellite_columns as satcol
         self.extra = extra
+        self.tracker = tracker
         self.catalogue = satcol.CatalogueDetections(inj.CATALOGUE, inj.CHANNEL, inj.CHANNEL_DELAY_US)
 
     def for_period(self, i0, i1):
         out = self.catalogue.for_period(i0, i1)
+        if self.tracker is not None:
+            for k, v in self.tracker.for_period(i0, i1).items():
+                out.setdefault(k, []).extend(v)
+            print("tracked passes:", self.tracker.last_passes, flush=True)
+            return out
         for k, v in self.extra.items():
             if i0 <= k < i1:
                 out.setdefault(k, []).append(v)
         return out
+
+
+class _Rows:
+    def __init__(self, rows):
+        self.r = rows
+
+    def rows(self, i0, i1):
+        return [x for x in self.r if i0 <= x[0] < i1]
 
 
 def cmd_detect(out_dir):
@@ -197,6 +219,30 @@ def cmd_lpi(case, out_dir, extra_kw):
     elif case == "realistic":
         found = json.load(open(os.path.join(out_dir, "detections.json")))["detected"]
         dets = PlanDetections({int(k): (v[0], v[1]) for k, v in found.items()})
+    elif case == "realistic_refined":
+        import satellite_columns as satcol
+        found = json.load(open(os.path.join(out_dir, "detections.json")))["detected"]
+        rf = DetectorReader(plan, sid)
+        extra = {}
+        for k, v in found.items():
+            k = int(k)
+            tm = TMM[sid[k]]
+            echo = rf.read_vector(k, 10000, inj.CHANNEL)
+            tx = rf.read_vector(k, 10000, "tx-h")
+            raw = v[0] + tm["tx0"] + inj.CHANNEL_DELAY_US
+            raw_ref, _ = satcol.refine_delay(echo, tx, raw, v[1], tm["tx0"], tm["tx1"])
+            extra[k] = (raw_ref - tm["tx0"] - inj.CHANNEL_DELAY_US, v[1])
+        dets = PlanDetections(extra)
+    elif case.startswith("realistic_tracked"):
+        # realistic_tracked, or realistic_tracked_ext<seconds> for another
+        # default extension of passes too short to fit a light curve
+        import satellite_columns as satcol
+        found = json.load(open(os.path.join(out_dir, "detections.json")))["detected"]
+        rows = [(int(k), v[0], v[1], v[2]) for k, v in found.items()]
+        tk = {}
+        if "_ext" in case:
+            tk["default_extend_s"] = float(case.split("_ext")[1])
+        dets = PlanDetections({}, satcol.TrackedDetections(_Rows(rows), satcol.zenith_pulse_keys(inj.DATA), **tk))
     elif case == "none":
         dets = None
     else:
