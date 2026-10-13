@@ -9,6 +9,10 @@ the synthetic satellite does to the plasma estimate; a perfect method would
 leave it at zero. Measures, on the real part of lags 1-10 in standard
 deviations of the injected run's real part (sqrt(acfs_var/2)):
 
+    shift_gate       the main measure: the mean signed difference at the
+                     echo's own gate, lags 1-5, over the periods, in the clean
+                     run's standard deviation (the echo sits in one gate; its
+                     neighbours are much less affected)
     bias_echo        median |difference| at the echo's gate and the gates
                      next to it
     signed_echo      median signed difference there (a systematic shift)
@@ -50,7 +54,7 @@ def load(d, ai):
 def compare(inj_dir, clean_dir):
     meta = json.load(open(os.path.join(inj_dir, "injection.json")))
     periods = [p["period"] for p in meta["periods"]]
-    echo, far, s_echo, s_far, signed, echo_c = [], [], [], [], [], []
+    echo, far, s_echo, s_far, signed, echo_c, gate = [], [], [], [], [], [], []
     for ai in periods:
         a, b = load(inj_dir, ai), load(clean_dir, ai)
         if a is None or b is None:
@@ -65,6 +69,7 @@ def compare(inj_dir, clean_dir):
         away = (n.abs(n.arange(len(r)) - g) >= 5) & (r >= 150) & (r <= 700)
         echo.append(z[near].ravel())
         echo_c.append(((xi[:, LAGS] - xc[:, LAGS]).real / sc)[near].ravel())
+        gate.append(((xi[g, 1:6] - xc[g, 1:6]).real / n.sqrt(vc[g, 1:6] / 2.0)).mean())
         far.append(z[away].ravel())
         s_echo.append((si / sc)[near].ravel())
         s_far.append((si / sc)[away].ravel())
@@ -72,6 +77,7 @@ def compare(inj_dir, clean_dir):
     echo, far, s_echo, s_far, echo_c = cat(echo), cat(far), cat(s_echo), cat(s_far), cat(echo_c)
     return dict(variant=meta["variant"], scenario=meta["scenario"], snr_db=meta["snr_db"],
                 pulses_injected=meta["pulses_injected"], periods=len(periods),
+                shift_gate=float(n.nanmean(gate)) if gate else n.nan,
                 bias_echo=float(n.nanmedian(n.abs(echo))),
                 signed_echo=float(n.nanmedian(echo)),
                 bias_echo_clean=float(n.nanmedian(n.abs(echo_c))),
@@ -90,7 +96,7 @@ def main():
         rows.append(compare(d, os.path.join(clean_root, v)))
         print(rows[-1], flush=True)
     json.dump(rows, open(os.path.join(outd, "injection_measures.json"), "w"), indent=1)
-    keys = ["snr_db", "bias_echo", "signed_echo", "bias_echo_clean", "leak_profile", "leak_frac3", "sigma_ratio_echo", "sigma_ratio_far"]
+    keys = ["snr_db", "shift_gate", "bias_echo", "signed_echo", "bias_echo_clean", "leak_profile", "leak_frac3", "sigma_ratio_echo", "sigma_ratio_far"]
     with open(os.path.join(outd, "injection_measures.md"), "w") as f:
         f.write("| scenario | variant | " + " | ".join(keys) + " |\n|" + "---|" * (len(keys) + 2) + "\n")
         for m in rows:
