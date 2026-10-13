@@ -773,19 +773,28 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         # append the satellite columns, now that their number is known. Each
         # column is nonzero only in the rows of its own pulse.
         n_sat=len(sat_cols)
+        # the satellite columns of each lag as one sparse block, assembled
+        # from its nonzero entries (the rows of each pulse follow one another,
+        # n_meas per pulse) and appended to the design matrix at the solve.
+        # The same matrix as appending them to every pulse's block, without
+        # the per-pulse column index of length n_sat, which with tracked
+        # passes (thousands of columns) took gigabytes.
+        SS=[None]*n_lags
         if n_sat > 0:
             print("%d satellite columns"%(n_sat))
             for li in range(n_lags):
+                sdata,srow,scol=[],[],[]
                 for pi in range(len(A[li])):
-                    cols=S[li][pi]
-                    if len(cols) > 0:
-                        sdata=n.concatenate([col for _,col in cols])
-                        srow=n.tile(n.arange(n_meas,dtype=int),len(cols))
-                        scol=n.repeat(n.array([ci for ci,_ in cols],dtype=int),n_meas)
-                        SM=sparse.csc_matrix((sdata,(srow,scol)),shape=(n_meas,n_sat),dtype=n.complex64)
-                    else:
-                        SM=sparse.csc_matrix((n_meas,n_sat),dtype=n.complex64)
-                    A[li][pi]=sparse.hstack([A[li][pi],SM],format="csc")
+                    for ci,col in S[li][pi]:
+                        sdata.append(col)
+                        srow.append(pi*n_meas+n.arange(n_meas,dtype=n.int64))
+                        scol.append(n.full(n_meas,ci,dtype=n.int64))
+                    S[li][pi]=None
+                if sdata:
+                    SS[li]=sparse.csc_matrix((n.concatenate(sdata),(n.concatenate(srow),n.concatenate(scol))),
+                                             shape=(len(A[li])*n_meas,n_sat),dtype=n.complex64)
+                else:
+                    SS[li]=sparse.csc_matrix((len(A[li])*n_meas,n_sat),dtype=n.complex64)
         sat_amp_e=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_g=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_var=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
@@ -830,6 +839,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             
             
             AA=sparse.vstack(A[li])
+            if n_sat > 0:
+                AA=sparse.hstack([AA,SS[li]],format="csc")
             #print(AA.shape)
             mm_g=n.concatenate(mgs[li])
             mm_e=n.concatenate(mes[li])
