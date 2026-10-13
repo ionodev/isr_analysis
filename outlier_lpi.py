@@ -170,6 +170,77 @@ def ols_covariance(Sigma, B, w, unconstrained):
     return C
 
 
+def schur_solve(B, n_p, groups, ms):
+    """
+    The least-squares solution of B x = m when the last columns of B are
+    satellite columns, each nonzero only in the rows of its own pulse.
+
+    The unknowns split into the first n_p (plasma gates and background) and
+    the satellite amplitudes. A satellite column shares rows only with the
+    columns of the same pulse, so the satellite part of the normal matrix is
+    block diagonal, one block per pulse (groups: the satellite column
+    indices, counted from n_p, of each pulse). Eliminating the satellites
+    block by block (the Schur complement) leaves a system of size n_p:
+
+        S   = N_pp - N_ps N_ss^-1 N_sp
+        x_p = S^-1 (y_p - N_ps N_ss^-1 y_s)
+        x_s = N_ss^-1 (y_s - N_sp x_p)
+
+    the same solution as the full normal equations, computed in time that
+    grows with the number of pulses rather than with the cube of the number
+    of satellite columns. The plasma covariance is S^-1 (with invert_normal's
+    handling of unconstrained unknowns); a satellite amplitude's variance is
+    the diagonal of N_ss^-1 + N_ss^-1 N_sp S^-1 N_ps N_ss^-1.
+
+    B   csc design matrix, already weighted (rows divided by sigma)
+    ms  the right-hand sides (weighted), solved together
+    Returns ([x for each m], diagonal of the covariance, unconstrained
+    plasma unknowns).
+    """
+    Bp = B[:, :n_p]
+    Bs = B[:, n_p:]
+    BpH = n.conj(Bp.T)
+    BsH = n.conj(Bs.T).tocsr()
+    Npp = BpH.dot(Bp).toarray()
+    Nps = BpH.dot(Bs).toarray()
+    Nss = BsH.dot(Bs).tocsr()
+    yp = [BpH.dot(m) for m in ms]
+    ys = [BsH.dot(m) for m in ms]
+    n_s = Bs.shape[1]
+    W = n.zeros((n_s, n_p), dtype=n.complex128)
+    Mdiag = n.zeros(n_s)
+    zs = [n.zeros(n_s, dtype=n.complex128) for _ in ms]
+    Minvs = []
+    for g in groups:
+        g = n.asarray(g)
+        M = Nss[g][:, g].toarray()
+        d = n.real(n.diag(M))
+        ok = d > 0
+        Minv = n.zeros(M.shape, dtype=n.complex128)
+        if ok.any():
+            # a pseudo-inverse: two columns of one pulse that are nearly the
+            # same (one satellite twice) would make the block singular
+            Minv[n.ix_(ok, ok)] = n.linalg.pinv(M[n.ix_(ok, ok)], rcond=1e-10, hermitian=True)
+        Minvs.append((g, Minv, ok))
+        W[g] = Minv.dot(n.conj(Nps[:, g].T))
+        Mdiag[g] = n.where(ok, n.real(n.diag(Minv)), n.nan)
+        for z, y in zip(zs, ys):
+            z[g] = Minv.dot(y[g])
+    S = Npp - Nps.dot(W)
+    S = 0.5 * (S + n.conj(S.T))
+    Sp, unconstrained = invert_normal(S)
+    Sp0 = n.nan_to_num(Sp)
+    xs = []
+    for z, y in zip(zs, yp):
+        xp = Sp.dot(y - Nps.dot(z))
+        xsat = z - W.dot(n.nan_to_num(xp))
+        xsat[n.isnan(Mdiag)] = n.nan
+        xs.append(n.concatenate([xp, xsat]))
+    var_s = Mdiag + n.real(n.sum(W.dot(Sp0) * n.conj(W), axis=1))
+    var = n.concatenate([n.real(n.diag(Sp)), var_s])
+    return xs, var, unconstrained
+
+
 def design_block(amb_rows, background_column):
     """
     One pulse's rows of the design matrix for one lag: the ambiguity function
@@ -908,6 +979,35 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 continue
                 
             
+
+            # unknowns: the plasma gates, the background, then the satellites
+            n_pl=rmax-rmins[li]
+            if n_sat > 0 and weighting=="variance":
+                # the satellite unknowns eliminated pulse by pulse
+                # (schur_solve): the same solution as the full solve below,
+                # needed when tracked passes give thousands of columns
+                try:
+                    t0=time.time()
+                    B=Sinv.dot(AA).tocsc()
+                    groups={}
+                    for ci,sc in enumerate(sat_cols):
+                        groups.setdefault(sc[0],[]).append(ci)
+                    (xhat_e,xhat_g),dvar,unconstrained=schur_solve(B,n_pl+n_bg,list(groups.values()),[mm_e,mm_g])
+                    if len(unconstrained)>0:
+                        print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,len(unconstrained),unconstrained[:8].tolist()))
+                    print("schur %1.2f"%(time.time()-t0))
+                    acfs_e[ rmins[li]:rmax, li ]=xhat_e[0:n_pl]
+                    acfs_g[ rmins[li]:rmax, li ]=xhat_g[0:n_pl]
+                    noise_e[li]=xhat_e[n_pl] if background_column else n.nan
+                    noise_g[li]=xhat_g[n_pl] if background_column else n.nan
+                    acfs_var[ rmins[li]:rmax, li ]=dvar[0:n_pl]
+                    sat_amp_e[:,li]=xhat_e[(n_pl+n_bg):]
+                    sat_amp_g[:,li]=xhat_g[(n_pl+n_bg):]
+                    sat_amp_var[:,li]=dvar[(n_pl+n_bg):]
+                except:
+                    traceback.print_exc()
+                    print("something went wrong.")
+                continue
 
             try:
                 t0=time.time()

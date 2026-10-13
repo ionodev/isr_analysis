@@ -234,14 +234,18 @@ def cmd_lpi(case, out_dir, extra_kw):
             extra[k] = (raw_ref - tm["tx0"] - inj.CHANNEL_DELAY_US, v[1])
         dets = PlanDetections(extra)
     elif case.startswith("realistic_tracked"):
-        # realistic_tracked, or realistic_tracked_ext<seconds> for another
-        # default extension of passes too short to fit a light curve
+        # realistic_tracked, optionally _ext<seconds> (the default extension
+        # of passes too short to fit a light curve) and _min<n> (the fewest
+        # detections that make a pass)
         import satellite_columns as satcol
         found = json.load(open(os.path.join(out_dir, "detections.json")))["detected"]
         rows = [(int(k), v[0], v[1], v[2]) for k, v in found.items()]
         tk = {}
-        if "_ext" in case:
-            tk["default_extend_s"] = float(case.split("_ext")[1])
+        for part in case.split("_")[2:]:
+            if part.startswith("ext"):
+                tk["default_extend_s"] = float(part[3:])
+            elif part.startswith("min"):
+                tk["min_detections"] = int(part[3:])
         dets = PlanDetections({}, satcol.TrackedDetections(_Rows(rows), satcol.zenith_pulse_keys(inj.DATA), **tk))
     elif case == "none":
         dets = None

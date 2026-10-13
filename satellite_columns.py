@@ -258,14 +258,22 @@ class TrackedDetections:
          delay (from its last detection, moved by its Doppler) is within
          link_delay samples, whose Doppler is within link_doppler_hz, and
          whose last detection is at most link_gap_s earlier;
-      2. a pass with at least min_detections detections gets delay(t) as a
+      2. a pass with at least min_detections detections (default one: at the
+         detector's false-alarm probability of 1e-10 a single detection is a
+         satellite, and a satellite stays in the beam for seconds, Memo 13)
+         gets delay(t) as a
          quadratic, Doppler(t) as a line, and SNR(t) in dB as a parabola (a
          beam crossing), fitted to its detections;
       3. its span is extended beyond the first and last detection to where
          the fitted SNR falls to extend_snr_db, at most max_extend_s; when
-         the SNR parabola does not open downward, by default_extend_s;
+         the SNR cannot be fitted (fewer than five detections, or a parabola
+         that does not open downward), by default_extend_s (2 s: passes last
+         3 to over 10 s, Memo 13);
       4. every pulse in the span gets a column at the fitted delay and
-         Doppler, except detected pulses, which keep their own.
+         Doppler, except detected pulses, which keep their own; columns of
+         one pulse closer than merge_delay samples and merge_doppler_hz are
+         merged (one satellite reached twice, by two fragments of a pass;
+         two such columns would be indistinguishable).
 
     Too long a span costs a little precision (a column without an echo fits
     about zero); too short a span leaves the faint pulses' bias, so the
@@ -277,8 +285,8 @@ class TrackedDetections:
     """
 
     def __init__(self, base, pulse_keys, link_delay=10.0, link_doppler_hz=1500.0, link_gap_s=1.5,
-                 min_detections=3, extend_snr_db=0.0, max_extend_s=3.0, default_extend_s=1.0,
-                 margin_s=10.0, sr=1e6):
+                 min_detections=1, extend_snr_db=0.0, max_extend_s=3.0, default_extend_s=2.0,
+                 margin_s=10.0, merge_delay=2.0, merge_doppler_hz=500.0, sr=1e6):
         self.base = base
         self.pulse_keys = pulse_keys
         self.link_delay = link_delay
@@ -289,6 +297,8 @@ class TrackedDetections:
         self.max_extend_s = max_extend_s
         self.default_extend_s = default_extend_s
         self.margin = int(margin_s * sr)
+        self.merge_delay = merge_delay
+        self.merge_doppler_hz = merge_doppler_hz
         self.sr = sr
         self.last_passes = []
 
@@ -363,6 +373,12 @@ class TrackedDetections:
                 out.setdefault(int(k), []).append((float(n.polyval(pd, t)), float(n.polyval(pf, t))))
                 added += 1
             self.last_passes.append(dict(detections=len(tr), added=added, start=int(k0), stop=int(k1)))
+        for k in out:
+            kept = []
+            for d, f in out[k]:
+                if all(abs(d - d2) >= self.merge_delay or abs(f - f2) >= self.merge_doppler_hz for d2, f2 in kept):
+                    kept.append((d, f))
+            out[k] = kept
         return out
 
 

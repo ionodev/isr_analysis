@@ -61,8 +61,26 @@ def test_two_passes_at_different_dopplers_stay_apart():
         assert len(set(round(r[2]) for r in t)) == 1
 
 
-def test_isolated_detections_get_no_track():
-    det = [(1_000_000, 3000.0, -500.0, 20.0), (6_000_000, 2000.0, 300.0, 20.0)]
+def test_an_isolated_detection_is_extended_by_the_default():
+    det = [(5_000_000, 3000.0, -500.0, 20.0)]
     td = TrackedDetections(Rows(det), lambda i0, i1: KEYS, margin_s=0)
     out = td.for_period(0, 10_000_000)
+    ks = sorted(out)
+    assert ks[0] == 3_000_000 and ks[-1] == 7_000_000      # +-2 s at 10 ms spacing
+    assert all(len(out[k]) == 1 for k in ks)
+
+
+def test_requiring_more_detections_drops_isolated_ones():
+    det = [(1_000_000, 3000.0, -500.0, 20.0), (6_000_000, 2000.0, 300.0, 20.0)]
+    td = TrackedDetections(Rows(det), lambda i0, i1: KEYS, margin_s=0, min_detections=3)
+    out = td.for_period(0, 10_000_000)
     assert sorted(out) == [1_000_000, 6_000_000]
+
+
+def test_one_satellite_reached_twice_gives_one_column_per_pulse():
+    truth, det = a_pass(3.0, 4.0, 3000.0, -500.0, 23.0, KEYS)
+    # the same pass detected twice, as two fragments 0.5 samples apart
+    det2 = det + [(k, d + 0.5, f, s) for k, d, f, s in det[::7]]
+    td = TrackedDetections(Rows(det2), lambda i0, i1: KEYS, margin_s=0, link_delay=0.2)
+    out = td.for_period(0, 10_000_000)
+    assert all(len(v) == 1 for v in out.values())

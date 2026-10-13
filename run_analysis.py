@@ -67,6 +67,11 @@ def satellite_detections(datadir, cfg):
             "channel_delay_us": tx-h to echo channel delay; null measures it
                          from the data (tx_delay.py),
             "min_snr_db": only echoes at least this strong (optional),
+            "track": link the detections into passes and give a column to
+                     every pulse of a pass, detected or not
+                     (satellite_columns.TrackedDetections; default false),
+            "track_options": keyword arguments of TrackedDetections
+                     (optional),
             "enabled": true (optional)
         }
     """
@@ -82,8 +87,11 @@ def satellite_detections(datadir, cfg):
             raise RuntimeError("the channel delay of %s could not be measured; give satellites.channel_delay_us"
                                % cfg["channel"])
     print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
-    return satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
-                                      min_snr_db=sat.get("min_snr_db"))
+    det = satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
+                                     min_snr_db=sat.get("min_snr_db"))
+    if sat.get("track", False):
+        det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
+    return det
 
 
 def run_lpi(datadir, output_base, cfg, max_time_s=None):
