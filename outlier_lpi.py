@@ -241,6 +241,37 @@ def schur_solve(B, n_p, groups, ms):
     return xs, var, unconstrained
 
 
+def column_residuals(AA, Sinv, xhat, mm, first_sat, rel=1e-3):
+    """
+    The residual power left in each satellite column's own rows after the
+    solve: for column c, the mean over the rows where the column is not
+    negligible (above rel times its largest entry: the rows its echo
+    reaches) of |m - A x|^2 / sigma^2. The measurement mm is already divided
+    by sigma (Sinv the diagonal of 1/sigma, AA the unweighted design matrix,
+    rows as solved). When the column describes the echo it removes it, and
+    the value is about 1 (the noise; a little less, as the column's own fit
+    takes one degree of freedom of its ~10 rows). An echo the column does
+    not describe (wrong delay or Doppler, or no satellite's shape) leaves it
+    larger. NaN for a column without rows.
+    """
+    x = n.nan_to_num(xhat)
+    res = mm - Sinv.dot(AA.dot(x))
+    Ssat = AA[:, first_sat:].tocsc()
+    n_s = Ssat.shape[1]
+    if Ssat.nnz == 0:
+        return n.full(n_s, n.nan)
+    col = n.repeat(n.arange(n_s), n.diff(Ssat.indptr))
+    a = n.abs(Ssat.data)
+    cmax = n.zeros(n_s)
+    n.maximum.at(cmax, col, a)
+    keep = a > rel * cmax[col]
+    r2 = n.abs(res[Ssat.indices[keep]]) ** 2
+    num = n.bincount(col[keep], weights=r2, minlength=n_s)
+    cnt = n.bincount(col[keep], minlength=n_s)
+    with n.errstate(invalid="ignore", divide="ignore"):
+        return n.where(cnt > 0, num / cnt, n.nan)
+
+
 def design_block(amb_rows, background_column):
     """
     One pulse's rows of the design matrix for one lag: the ambiguity function
@@ -798,6 +829,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         sat_amp_e=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_g=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_var=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # residual power in each column's own rows after the solve
+        # (column_residuals), plain products
+        sat_resid=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
@@ -1015,6 +1049,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     sat_amp_e[:,li]=xhat_e[(n_pl+n_bg):]
                     sat_amp_g[:,li]=xhat_g[(n_pl+n_bg):]
                     sat_amp_var[:,li]=dvar[(n_pl+n_bg):]
+                    sat_resid[:,li]=column_residuals(AA,Sinv,xhat_e,mm_e,n_pl+n_bg)
                 except:
                     traceback.print_exc()
                     print("something went wrong.")
@@ -1097,6 +1132,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     sat_amp_e[:,li]=xhat_e[(n_pl+n_bg):]
                     sat_amp_g[:,li]=xhat_g[(n_pl+n_bg):]
                     sat_amp_var[:,li]=n.diag(Sigma.real)[(n_pl+n_bg):]
+                    sat_resid[:,li]=column_residuals(AA,Sinv,xhat_e,mm_e,n_pl+n_bg)
             except:
                 traceback.print_exc()
                 print("something went wrong.")
@@ -1172,6 +1208,9 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["sat_amp_e"]=sat_amp_e
                 ho["sat_amp_g"]=sat_amp_g
                 ho["sat_amp_var"]=sat_amp_var
+                # the residual power in each column's own rows after the
+                # solve, over the noise (about 1 where the echo was removed)
+                ho["sat_resid"]=sat_resid
                 ho["satellite_template"]=satellite_template
                 if len(sat_avg_tx) > 0:
                     # per code: pulses averaged, and their scatter about the average
