@@ -175,3 +175,61 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def summarize(npz, s1, fig=None, label=""):
+    """Class fractions of detected and tracked columns, by altitude, SNR, hour and day."""
+    z = n.load(npz, allow_pickle=True)
+    cls = classify(z["S"], z["rho"], z["srho"], z["nearest"], s1)
+    t = z["t0"]
+    day = n.where(t < 1712534400, "7 April", "8 April")
+    hour = ((t % 86400) // 3600).astype(int)
+    classes = ("coherent", "decaying", "no echo", "shared")
+    out = {}
+
+    def frac(m):
+        return {c: float(n.mean(cls[m] == c)) if m.any() else n.nan for c in classes} | {"n": int(m.sum())}
+    for kind, km in (("detected", z["detected"]), ("tracked", ~z["detected"])):
+        o = {"all": frac(km)}
+        for d in ("7 April", "8 April"):
+            o[d] = frac(km & (day == d))
+        for lo, hi in ((150, 300), (300, 450), (450, 520), (520, 600), (600, 800), (800, 1100)):
+            o["%d-%d km" % (lo, hi)] = frac(km & (z["range_km"] >= lo) & (z["range_km"] < hi))
+        if kind == "detected":
+            for lo, hi in ((0, 18), (18, 21), (21, 25), (25, 30), (30, 99)):
+                o["SNR %d-%d dB" % (lo, hi)] = frac(km & (z["snr"] >= lo) & (z["snr"] < hi))
+        for h in range(11, 23):
+            o["%02d UTC" % h] = frac(km & (hour == h))
+        out[kind] = o
+    if fig:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        f, ax = plt.subplots(1, 3, figsize=(13, 3.9))
+        bands = [k for k in out["detected"] if k.endswith(" km")]
+        x = n.arange(len(bands))
+        for a, kind in zip(ax[:2], ("detected", "tracked")):
+            bottom = n.zeros(len(bands))
+            for c, col in zip(classes, ("C2", "C3", "0.6", "C0")):
+                v = n.array([out[kind][b][c] for b in bands])
+                a.bar(x, v, bottom=bottom, color=col, label=c)
+                bottom += v
+            a.set_xticks(x)
+            a.set_xticklabels([b.replace(" km", "") for b in bands], rotation=30, fontsize=8)
+            a.set_xlabel("range (km)")
+            a.set_ylabel("fraction of columns")
+            a.set_title("%s columns (%d)" % (kind, out[kind]["all"]["n"]))
+        ax[0].legend(fontsize=7, loc="lower left")
+        dm = z["detected"] & (z["S"] > s1)
+        ax[2].hist(n.clip(z["rho"][dm], -1, 3), bins=n.linspace(-1, 3, 41), color="C2", alpha=0.7,
+                   label="detected, T1 passed")
+        ax[2].axvline(RHO0, color="k", ls="--", lw=0.8)
+        ax[2].set_xlabel(r"$\rho$ = long-lag over short-lag amplitude")
+        ax[2].set_ylabel("columns")
+        ax[2].set_title("Coherence (1: point target, 0: decays)")
+        ax[2].legend(fontsize=7)
+        f.suptitle(label)
+        f.tight_layout()
+        f.savefig(fig, dpi=150)
+        plt.close(f)
+    return out
