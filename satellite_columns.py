@@ -31,6 +31,8 @@ change with lag, which is the check that the echo was a coherent target.
     TrackedDetections      the catalogue's detections linked into passes,
                            with columns for the pulses of a pass the
                            detector missed
+    RandomControlColumns   columns at random places without an echo, the
+                           pure-plasma control
 """
 
 import numpy as n
@@ -379,6 +381,84 @@ class TrackedDetections:
                 if all(abs(d - d2) >= self.merge_delay or abs(f - f2) >= self.merge_doppler_hz for d2, f2 in kept):
                     kept.append((d, f))
             out[k] = kept
+        return out
+
+
+class RandomControlColumns:
+    """
+    The pure-plasma control (Memo 46, option F): satellite columns at random
+    pulses, delays and Dopplers where there is no echo, added to those of a
+    base detector.
+
+    The claim tested is that a column where no satellite is (a false
+    detection, or the extrapolated end of a pass) costs precision and not
+    bias: the inversion fits its amplitude to about zero, takes from the
+    plasma the information of that pulse's rows at that range, and says so
+    in the error bar. Columns on pure plasma show whether that holds.
+
+    Per period, per_period columns are drawn uniformly over the period's
+    pulses (pulse_keys), delays in [delay_min, delay_max] samples (the round
+    trip in microseconds: 150-800 km is 1000-5337) and Dopplers in
+    [-doppler_max_hz, doppler_max_hz] (the detector's search band, where a
+    false alarm would fall). A draw is kept only if it stays clear of every
+    column the base gives, on its own pulse and on the pulses within
+    `neighbours` of it (the clutter-subtracted products carry the echoes of
+    the pulse a pulse is differenced against), by at least avoid_delay
+    samples (the pulse length) in delay and avoid_doppler_hz in Doppler.
+    The draws are seeded by the seed and the period, so a run and its
+    analysis see the same columns.
+
+    base        an object with for_period(i0, i1), or None for no others
+    pulse_keys  a function (i0, i1) -> the pulse keys a column may be put on
+    """
+
+    def __init__(self, base, pulse_keys, per_period, seed=1, delay_min=1000.0, delay_max=5337.0,
+                 doppler_max_hz=60e3, avoid_delay=480.0, avoid_doppler_hz=2000.0, neighbours=3):
+        self.base = base
+        self.pulse_keys = pulse_keys
+        self.per_period = int(per_period)
+        self.seed = int(seed)
+        self.delay_min, self.delay_max = float(delay_min), float(delay_max)
+        self.doppler_max_hz = float(doppler_max_hz)
+        self.avoid_delay = float(avoid_delay)
+        self.avoid_doppler_hz = float(avoid_doppler_hz)
+        self.neighbours = int(neighbours)
+
+    def random_columns(self, i0, i1, base_cols):
+        """{key: [(delay, Doppler), ...]} of the random columns of [i0, i1)."""
+        keys = n.array(sorted(self.pulse_keys(i0, i1)), dtype=n.int64)
+        if len(keys) == 0 or self.per_period <= 0:
+            return {}
+        rng = n.random.default_rng([self.seed, int(i0 // 1000000)])
+        out = {}
+        n_made, n_tried = 0, 0
+        while n_made < self.per_period and n_tried < 50 * self.per_period:
+            n_tried += 1
+            pi = int(rng.integers(len(keys)))
+            d = float(rng.uniform(self.delay_min, self.delay_max))
+            f = float(rng.uniform(-self.doppler_max_hz, self.doppler_max_hz))
+            near = keys[max(pi - self.neighbours, 0):pi + self.neighbours + 1]
+            clash = False
+            for k in near:
+                for d2, f2 in base_cols.get(int(k), []):
+                    if abs(d - d2) < self.avoid_delay or abs(f - f2) < self.avoid_doppler_hz:
+                        clash = True
+                for d2, f2 in out.get(int(k), []):
+                    # two random columns of one pulse kept apart as well
+                    if int(k) == int(keys[pi]) and abs(d - d2) < self.avoid_delay:
+                        clash = True
+            if clash:
+                continue
+            out.setdefault(int(keys[pi]), []).append((d, f))
+            n_made += 1
+        return out
+
+    def for_period(self, i0, i1):
+        base_cols = self.base.for_period(i0, i1) if self.base is not None else {}
+        rand = self.random_columns(i0, i1, base_cols)
+        out = {k: list(v) for k, v in base_cols.items()}
+        for k, v in rand.items():
+            out.setdefault(k, []).extend(v)
         return out
 
 

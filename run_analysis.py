@@ -72,6 +72,11 @@ def satellite_detections(datadir, cfg):
                      (satellite_columns.TrackedDetections; default false),
             "track_options": keyword arguments of TrackedDetections
                      (optional),
+            "random_columns": keyword arguments of
+                     satellite_columns.RandomControlColumns, e.g.
+                     {"per_period": 200, "seed": 1}: extra columns at random
+                     places without an echo, the pure-plasma control
+                     (optional; for tests only),
             "enabled": true (optional)
         }
     """
@@ -91,6 +96,9 @@ def satellite_detections(datadir, cfg):
                                      min_snr_db=sat.get("min_snr_db"))
     if sat.get("track", False):
         det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
+    if sat.get("random_columns"):
+        # the pure-plasma control: columns where no echo is
+        det = satcol.RandomControlColumns(det, satcol.zenith_pulse_keys(datadir), **sat["random_columns"])
     return det
 
 
