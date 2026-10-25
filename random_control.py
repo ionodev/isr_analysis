@@ -115,6 +115,7 @@ def measure(B, R):
                                                              for a in common])), axis=0).tolist()
     res["columns_by_gate"] = hit_all.sum(axis=0).tolist()
     res["zs_lags1_5"] = n.nanmean(zs[:, 0:5], axis=1).tolist()
+    res["zd_lag1"] = zd[:, 0][n.isfinite(zd[:, 0])].tolist()
     return res
 
 
@@ -153,12 +154,13 @@ def figure(results, fig_dir):
     rates = sorted(results, key=lambda x: int(x))
     for rate in rates:
         m = results[rate]["lpi"]
-        z = n.array(m["zs_lags1_5"])
-        ax[0].hist(z, bins=n.linspace(-3, 3, 41), histtype="step", density=True,
-                   label="%s per period: mean %+.3f" % (rate, m["shift_lags1_5_mean"]))
+        z = n.array(m["zd_lag1"])
+        ax[0].hist(z, bins=n.linspace(-4, 4, 41), histtype="step", density=True,
+                   label="%s per period: mean %+.3f$\\sigma$" % (rate, m["shift_lags1_5_mean"]))
         ax[1].plot(m["r_km"], m["sigma_ratio_by_gate"], label="%s per period" % rate)
-    xx = n.linspace(-3, 3, 200)
-    ax[0].set_xlabel(r"ACF shift at a column's gate, lags 1-5 ($\sigma$)")
+    xx = n.linspace(-4, 4, 200)
+    ax[0].plot(xx, n.exp(-xx ** 2 / 2) / n.sqrt(2 * n.pi), "k:", label="N(0,1)")
+    ax[0].set_xlabel(r"lag-1 shift at a column's gate / its own $\sigma$")
     ax[0].set_ylabel("density")
     ax[0].set_title("Bias: shift at gates with random columns")
     ax[0].legend(fontsize=7)
