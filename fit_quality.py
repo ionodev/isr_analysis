@@ -14,6 +14,12 @@ marks each fitted gate:
     SATELLITE a catalogued echo of at least 20 dB within one gate of it
               during the fit window (for information: with the satellite
               columns it is modelled, without them it may bias the gate)
+    RESIDUAL  a satellite column within one gate of it during the fit window
+              whose own rows keep residual power after the solve
+              (outlier_lpi sat_resid, mean of lags 1-10) above
+              RESIDUAL_THRESHOLD times the noise: an echo the column did not
+              remove (for information, like SATELLITE). residual_columns()
+              reads them from the LPI files
 
 A gate is good when it carries none of the first three.
 """
@@ -29,6 +35,12 @@ T0_RECORDING = 1712484000          # the first period of the eclipse2024 recordi
 PERIOD_S = 10
 
 FAILED, BOUND, NOISY, SATELLITE = 1, 2, 4, 8
+RESIDUAL = 16
+# a column's rows hold residual power of twice the noise: an echo left at
+# about the noise level per row (0 dB) or brighter. Where the column removed
+# the echo the value is about 0.9 (the noise less the column's own fit)
+RESIDUAL_THRESHOLD = 2.0
+KM_PER_US = 299792458.0 / 2 / 1e9
 
 
 def load_fits(d, t_range=None, constant=DENSITY_CONSTANT):
@@ -50,8 +62,33 @@ def load_fits(d, t_range=None, constant=DENSITY_CONSTANT):
     return out
 
 
-def flags(F, echoes=None, min_snr_db=20.0):
-    """Flag bits per (window, gate). echoes: rows (period index, range km, SNR dB)."""
+def residual_columns(d, t_range=None, lags=slice(0, 10)):
+    """
+    The satellite columns of the LPI files of a directory with their
+    residual: rows (period index, range km, residual over the noise), from
+    sat_resid (mean over the given lags). Empty when the files have none.
+    """
+    out = []
+    for f in sorted(glob.glob(os.path.join(d, "lpi_60", "zenith-l", "lpi-*.h5"))):
+        t = int(os.path.basename(f)[4:-3])
+        if t_range is not None and not (t_range[0] <= t < t_range[1]):
+            continue
+        with h5py.File(f, "r") as h:
+            if "sat_resid" not in h or h["sat_resid"].shape[0] == 0:
+                continue
+            q = n.nanmean(h["sat_resid"][()][:, lags], axis=1)
+            r = h["sat_delay_samples"][()] * KM_PER_US
+        ai = round((t - T0_RECORDING) / PERIOD_S)
+        out.append(n.column_stack([n.full(len(q), ai), r, q]))
+    return n.concatenate(out) if out else n.zeros((0, 3))
+
+
+def flags(F, echoes=None, min_snr_db=20.0, columns=None, threshold=RESIDUAL_THRESHOLD):
+    """
+    Flag bits per (window, gate). echoes: rows (period index, range km, SNR
+    dB); columns: rows (period index, range km, residual), from
+    residual_columns, for the RESIDUAL flag.
+    """
     f = n.zeros(F["ne"].shape, dtype=n.int16)
     vals = [F[k] for k in ("ne", "dne", "Te", "dTe", "Ti", "dTi", "vi", "dvi")]
     bad = n.zeros(f.shape, bool)
@@ -75,6 +112,16 @@ def flags(F, echoes=None, min_snr_db=20.0):
             m = strong & (ai >= a0) & (ai < a1)
             for r in n.unique(rk[m]):
                 f[w, n.abs(F["r"] - r) <= gate] |= SATELLITE
+    if columns is not None and len(columns):
+        ai, rk, q = columns[:, 0], columns[:, 1], columns[:, 2]
+        gate = n.median(n.diff(F["r"]))
+        bad = q > threshold
+        for w in range(len(F["t0"])):
+            a0 = (F["t0"][w] - T0_RECORDING) / PERIOD_S
+            a1 = (F["t1"][w] - T0_RECORDING) / PERIOD_S
+            m = bad & (ai >= a0) & (ai < a1)
+            for r in n.unique(rk[m]):
+                f[w, n.abs(F["r"] - r) <= gate] |= RESIDUAL
     return f
 
 

@@ -29,3 +29,24 @@ def test_an_echo_of_another_shape_is_left_in_the_rows():
     rng = n.random.default_rng(2)
     q = setup(rng, n.exp(1j * n.linspace(0, 6, 10)))
     assert q > 20
+
+
+def test_residual_flag_marks_the_gates_of_a_column_left_with_power():
+    import fit_quality as fq
+    r = n.arange(100.0, 800.0, 9.0)
+    t0 = fq.T0_RECORDING + 10 * n.array([100.0, 106.0])
+    F = dict(t0=t0, t1=t0 + 60, r=r)
+    for p in ("ne", "dne", "Te", "dTe", "Ti", "dTi", "vi", "dvi"):
+        F[p] = n.ones((2, len(r)))
+    F["Te"] = F["Te"] * 1500.0
+    F["Ti"] = F["Ti"] * 1000.0
+    F["dne"] = F["dne"] * 0.1
+    cols = n.array([[102, 450.0, 5.0],        # left with power, in window 0
+                    [103, 300.0, 0.9],        # removed
+                    [108, 600.0, 3.0]])       # left, in window 1
+    f = fq.flags(F, columns=cols)
+    res = (f & fq.RESIDUAL) > 0
+    assert res[0, n.abs(r - 450) <= 9].all() and res[0].sum() == (n.abs(r - 450) <= 9).sum()
+    assert res[1, n.abs(r - 600) <= 9].all() and res[1].sum() == (n.abs(r - 600) <= 9).sum()
+    # information only: a gate is still good
+    assert fq.good(f).all()
