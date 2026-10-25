@@ -182,8 +182,13 @@ class CatalogueDetections:
     """
 
     def __init__(self, metadata_dir, channel, channel_delay_samples,
-                 t_window=None, range_window=None, min_snr_db=None, refine_reader=None):
+                 t_window=None, range_window=None, min_snr_db=None, refine_reader=None,
+                 strong_pfa=None):
         self.reader = DigitalMetadataReader(metadata_dir)
+        # with a catalogue made at a lower false-alarm probability: the
+        # probability whose threshold marks a detection as strong (would
+        # have been made at it) in rows(); None marks every one strong
+        self.strong_pfa = strong_pfa
         # an rf reader (read_vector_1d) to refine the delays with, or None
         self.refine_reader = refine_reader
         self.channel = channel
@@ -208,9 +213,16 @@ class CatalogueDetections:
                 ch = ch.decode()
             if ch != self.channel:
                 continue
-            for raw, sweep_id, doppler_hz, snr_db, range_km in zip(
+            n_rec = len(rec["raw_delay_sample"])
+            if self.strong_pfa is not None:
+                from single_pulse_satellite_cfar import cfar_alpha
+                strong = [float(r) >= cfar_alpha(self.strong_pfa, int(L), int(fac)) for r, L, fac in zip(
+                    rec["cfar_ratio"], rec["integrated_pulse_length"], rec["decimation_factor"])]
+            else:
+                strong = [True] * n_rec
+            for raw, sweep_id, doppler_hz, snr_db, range_km, st in zip(
                     rec["raw_delay_sample"], rec["sweep_id"], rec["doppler_hz"],
-                    rec["snr_db"], rec["range_km"]):
+                    rec["snr_db"], rec["range_km"], strong):
                 if int(sweep_id) not in tmm:
                     continue
                 if self.min_snr_db is not None and snr_db < self.min_snr_db:
@@ -222,12 +234,13 @@ class CatalogueDetections:
                 if self.refine_reader is not None:
                     raw = self.refine(int(key), int(sweep_id), raw, float(doppler_hz))
                 delay = raw - tmm[int(sweep_id)]["tx0"] - self.channel_delay_samples
-                out.setdefault(int(key), []).append((delay, float(doppler_hz), float(snr_db)))
+                out.setdefault(int(key), []).append((delay, float(doppler_hz), float(snr_db), bool(st)))
         return out
 
     def rows(self, i0, i1):
-        """(pulse key, delay, Doppler, SNR dB) of every echo in [i0, i1)."""
-        return [(k, d[0], d[1], d[2]) for k, v in self._detections(i0, i1).items() for d in v]
+        """(pulse key, delay, Doppler, SNR dB, strong) of every echo in [i0,
+        i1); strong is False for a detection below strong_pfa's threshold."""
+        return [(k, d[0], d[1], d[2], d[3]) for k, v in self._detections(i0, i1).items() for d in v]
 
     def refine(self, key, sweep_id, raw, doppler_hz):
         m = tmm[sweep_id]
@@ -288,7 +301,8 @@ class TrackedDetections:
 
     def __init__(self, base, pulse_keys, link_delay=10.0, link_doppler_hz=1500.0, link_gap_s=1.5,
                  min_detections=1, extend_snr_db=0.0, max_extend_s=3.0, default_extend_s=2.0,
-                 margin_s=10.0, merge_delay=2.0, merge_doppler_hz=500.0, sr=1e6):
+                 margin_s=10.0, merge_delay=2.0, merge_doppler_hz=500.0, sr=1e6,
+                 min_weak_pulses=None):
         self.base = base
         self.pulse_keys = pulse_keys
         self.link_delay = link_delay
@@ -302,6 +316,13 @@ class TrackedDetections:
         self.merge_delay = merge_delay
         self.merge_doppler_hz = merge_doppler_hz
         self.sr = sr
+        # confirmation of weak detections (a catalogue made at a lower
+        # false-alarm probability, rows marked strong or not): a pass with
+        # no strong detection is kept only if its detections lie on at
+        # least min_weak_pulses pulses; the detections of a pass not kept
+        # get no column. None keeps every pass (rows without the mark count
+        # as strong)
+        self.min_weak_pulses = min_weak_pulses
         self.last_passes = []
 
     def passes(self, rows):
@@ -309,10 +330,10 @@ class TrackedDetections:
         lam = 299792458.0 / 440.2e6
         tracks = []
         for r in sorted(rows, key=lambda x: x[0]):
-            k, d, f, _ = r
+            k, d, f = r[0], r[1], r[2]
             best, best_cost = None, None
             for tr in tracks:
-                k0, d0, f0, _ = tr[-1]
+                k0, d0, f0 = tr[-1][0], tr[-1][1], tr[-1][2]
                 dt = (k - k0) / self.sr
                 if dt > self.link_gap_s or dt < 0:
                     continue
@@ -353,15 +374,27 @@ class TrackedDetections:
         k1 = k[-1] + ext1 * self.sr
         return pd, pf, k[0], k0, k1
 
+    def confirmed(self, tr):
+        """Whether a pass is kept under the weak-detection confirmation."""
+        if self.min_weak_pulses is None:
+            return True
+        if any(len(r) < 5 or r[4] for r in tr):
+            return True
+        return len(set(int(r[0]) for r in tr)) >= self.min_weak_pulses
+
     def for_period(self, i0, i1):
         rows = self.base.rows(i0 - self.margin, i1 + self.margin)
+        tracks = self.passes(rows)
+        if self.min_weak_pulses is not None:
+            tracks = [tr for tr in tracks if self.confirmed(tr)]
+            rows = [r for tr in tracks for r in tr]
         detected = {}
         for r in rows:
             detected.setdefault(int(r[0]), []).append((r[1], r[2]))
         out = {k: list(v) for k, v in detected.items() if i0 <= k < i1}
         keys = n.array(sorted(self.pulse_keys(i0, i1)), dtype=n.int64)
         self.last_passes = []
-        for tr in self.passes(rows):
+        for tr in tracks:
             if len(tr) < self.min_detections:
                 continue
             pd, pf, kref, k0, k1 = self.span(tr)

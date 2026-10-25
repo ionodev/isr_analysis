@@ -71,7 +71,12 @@ def satellite_detections(datadir, cfg):
                      every pulse of a pass, detected or not
                      (satellite_columns.TrackedDetections; default false),
             "track_options": keyword arguments of TrackedDetections
-                     (optional),
+                     (optional; {"min_weak_pulses": 3} confirms the weak
+                     detections of a lower-threshold catalogue by tracking),
+            "strong_pfa": with a catalogue made at a lower false-alarm
+                     probability, the probability whose threshold marks a
+                     detection strong (e.g. 1e-10, the default catalogue's);
+                     the others are weak (optional),
             "random_columns": keyword arguments of
                      satellite_columns.RandomControlColumns, e.g.
                      {"per_period": 200, "seed": 1}: extra columns at random
@@ -93,7 +98,7 @@ def satellite_detections(datadir, cfg):
                                % cfg["channel"])
     print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
     det = satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
-                                     min_snr_db=sat.get("min_snr_db"))
+                                     min_snr_db=sat.get("min_snr_db"), strong_pfa=sat.get("strong_pfa"))
     if sat.get("track", False):
         det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
     if sat.get("random_columns"):

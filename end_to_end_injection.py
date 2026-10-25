@@ -26,6 +26,11 @@ columns get only what the real detector finds:
                realistic_tracked  the detected ones linked into passes, with
                           columns for every pulse of a pass
                           (satellite_columns.TrackedDetections)
+               realistic_confirmed  every detection of a lower-threshold
+                          detect run (pfa given to detect), false alarms
+                          included, linked into passes; passes with no
+                          detection above the 1e-10 threshold kept only
+                          with detections on 3 pulses
                none       none (variant 3: no satellite columns at all)
              Extra keywords for lpi_files (e.g. outlier_rejection=True)
              can follow as key=value and are added to the case's name.
@@ -39,7 +44,7 @@ in the beam from 3 to 7 s of the period, the matched-filter SNR falling by
 8-23 dB in steps of 3 dB over the periods.
 
 Usage:
-    python3 end_to_end_injection.py detect  <out_dir>
+    python3 end_to_end_injection.py detect  <out_dir> [pfa]
     mpirun -np 6 python3 end_to_end_injection.py lpi <case> <out_dir> [key=value ...]
     python3 end_to_end_injection.py measure <out_dir> <clean_variants_dir>
 """
@@ -129,10 +134,13 @@ class DetectorReader:
         return add_echo(v.astype(n.complex128), sample, self.plan, self.sid, n_samples).astype(n.complex64)
 
 
+STRONG_PFA = 1e-10
+
+
 def _detect_period(args):
-    ai, plan, sid = args
+    ai, plan, sid, pfa = args
     import single_pulse_satellite_cfar as cfar
-    dargs = cfar.parser().parse_args(["--data", inj.DATA, "--output", "/dev/null"])
+    dargs = cfar.parser().parse_args(["--data", inj.DATA, "--output", "/dev/null", "--pfa", repr(pfa)])
     bank = cfar.FFTBank(dargs.fft_batch)
     rf = DetectorReader(plan, sid)
     out = []
@@ -146,12 +154,16 @@ def _detect_period(args):
             continue
         p = plan[k]
         best = None
+        alls = []
         for d in dets:
             delay = d["raw_delay_sample"] - TMM[sid[k]]["tx0"] - inj.CHANNEL_DELAY_US
-            if abs(delay - p["delay"]) <= MATCH_DELAY and abs(d["doppler_hz"] - p["doppler"]) <= MATCH_DOPPLER_HZ:
+            strong = d["cfar_ratio"] >= cfar.cfar_alpha(STRONG_PFA, d["integrated_pulse_length"], d["decimation_factor"])
+            match = abs(delay - p["delay"]) <= MATCH_DELAY and abs(d["doppler_hz"] - p["doppler"]) <= MATCH_DOPPLER_HZ
+            if match:
                 if best is None or d["snr_db"] > best[2]:
-                    best = (delay, d["doppler_hz"], d["snr_db"])
-        out.append((int(k), p["snr_db"], p["peak_db"], best))
+                    best = (delay, d["doppler_hz"], d["snr_db"], bool(strong))
+            alls.append((float(delay), float(d["doppler_hz"]), float(d["snr_db"]), bool(strong), bool(match)))
+        out.append((int(k), p["snr_db"], p["peak_db"], best, alls))
     return out
 
 
@@ -185,10 +197,10 @@ class _Rows:
         return [x for x in self.r if i0 <= x[0] < i1]
 
 
-def cmd_detect(out_dir):
+def cmd_detect(out_dir, pfa=STRONG_PFA):
     plan, sid, meta = plan_passes()
     with Pool(len(inj.PERIODS)) as pool:
-        res = [r for rr in pool.map(_detect_period, [(ai, plan, sid) for ai in inj.PERIODS]) for r in rr]
+        res = [r for rr in pool.map(_detect_period, [(ai, plan, sid, pfa) for ai in inj.PERIODS]) for r in rr]
     os.makedirs(out_dir, exist_ok=True)
     snr = n.array([r[1] for r in res])
     found = n.array([r[3] is not None for r in res])
@@ -199,8 +211,11 @@ def cmd_detect(out_dir):
         if m.any():
             curve.append(dict(snr_lo=float(a), snr_hi=float(b), pulses=int(m.sum()), detected=float(found[m].mean())))
     detected = {str(r[0]): [float(r[3][0]), float(r[3][1]), float(r[3][2])] for r in res if r[3] is not None}
+    # every detection on the injected pulses, matched or not: (key, delay,
+    # Doppler, SNR, strong at STRONG_PFA, matches the injected echo)
+    alls = [[r[0]] + list(a) for r in res for a in r[4]]
     json.dump(dict(passes=meta, curve=curve, pulses=len(res), detected_fraction=float(found.mean()),
-                   detected=detected), open(os.path.join(out_dir, "detections.json"), "w"), indent=1)
+                   detected=detected, pfa=pfa, all=alls), open(os.path.join(out_dir, "detections.json"), "w"), indent=1)
     for c in curve:
         print("SNR %5.1f-%5.1f dB: %4d pulses, detected %.2f" % (c["snr_lo"], c["snr_hi"], c["pulses"], c["detected"]))
 
@@ -247,6 +262,16 @@ def cmd_lpi(case, out_dir, extra_kw):
             elif part.startswith("min"):
                 tk["min_detections"] = int(part[3:])
         dets = PlanDetections({}, satcol.TrackedDetections(_Rows(rows), satcol.zenith_pulse_keys(inj.DATA), **tk))
+    elif case == "realistic_confirmed":
+        # a catalogue at a lower false-alarm probability (detect <out> <pfa>):
+        # every detection on the injected pulses, the injected echo's or a
+        # false alarm, linked into passes; a pass without a detection above
+        # the 1e-10 threshold is kept only with detections on 3 pulses
+        import satellite_columns as satcol
+        found = json.load(open(os.path.join(out_dir, "detections.json")))["all"]
+        rows = [(int(a[0]), a[1], a[2], a[3], bool(a[4])) for a in found]
+        dets = PlanDetections({}, satcol.TrackedDetections(_Rows(rows), satcol.zenith_pulse_keys(inj.DATA),
+                                                           min_weak_pulses=3))
     elif case == "none":
         dets = None
     else:
@@ -287,7 +312,7 @@ def cmd_measure(out_dir, clean_root):
 def main():
     cmd = sys.argv[1]
     if cmd == "detect":
-        cmd_detect(sys.argv[2])
+        cmd_detect(sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else STRONG_PFA)
     elif cmd == "lpi":
         cmd_lpi(sys.argv[2], sys.argv[3], sys.argv[4:])
     elif cmd == "measure":
