@@ -832,6 +832,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         # residual power in each column's own rows after the solve
         # (column_residuals), plain products
         sat_resid=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # with outlier rejection and satellite columns: the fraction of rows
+        # each test removes per lag (the ratio test, the power cut, either),
+        # and the fraction of each column's own rows removed
+        outl_ratio=n.full(n_lags,n.nan,dtype=n.float32)
+        outl_power=n.full(n_lags,n.nan,dtype=n.float32)
+        outl_any=n.full(n_lags,n.nan,dtype=n.float32)
+        sat_rows_rejected=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
@@ -958,6 +965,18 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     plt.show()
 
 
+                rejected_rows=None
+                if outlier_rejection and satellite_detections is not None:
+                    # what each test removes, for the comparison with the
+                    # satellite columns (written only with them)
+                    fin=n.isfinite(mm_em)&n.isfinite(mm_gm)
+                    rej_ratio=((ratio_test>10)|(ratio_test_g>10))&fin
+                    rej_power=(localized_sigma>100*msig)&fin
+                    nfin=max(int(fin.sum()),1)
+                    outl_ratio[li]=rej_ratio.sum()/nfin
+                    outl_power[li]=rej_power.sum()/nfin
+                    outl_any[li]=(rej_ratio|rej_power).sum()/nfin
+                    rejected_rows=n.ravel(rej_ratio|rej_power)
                 if outlier_rejection:
                     # is this threshold too high?
                     # maybe 6-7 might still be possible.
@@ -995,6 +1014,20 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
             gidx = n.where( (n.isnan(mm_e)==False) & (n.isnan(mm_g)==False) & (n.isnan(sigma_lp_est) == False) )[0]
             print("%d/%d measurements good"%(len(gidx),len(mm_g)))
+
+            if rejected_rows is not None and n_sat > 0:
+                # per satellite column, the fraction of its own rows (where
+                # it is above 1e-3 of its peak) the outlier tests removed
+                Ssat=AA[:,AA.shape[1]-n_sat:].tocsc()
+                if Ssat.nnz > 0:
+                    col=n.repeat(n.arange(n_sat),n.diff(Ssat.indptr))
+                    a=n.abs(Ssat.data)
+                    cmax=n.zeros(n_sat)
+                    n.maximum.at(cmax,col,a)
+                    keep=a>1e-3*cmax[col]
+                    num=n.bincount(col[keep],weights=rejected_rows[Ssat.indices[keep]],minlength=n_sat)
+                    cnt=n.bincount(col[keep],minlength=n_sat)
+                    sat_rows_rejected[:,li]=n.where(cnt>0,num/n.maximum(cnt,1),n.nan)
 
             # take outliers and bad measurements
             AA=AA[gidx,:]
@@ -1211,6 +1244,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 # the residual power in each column's own rows after the
                 # solve, over the noise (about 1 where the echo was removed)
                 ho["sat_resid"]=sat_resid
+                if outlier_rejection:
+                    ho["outlier_ratio_fraction"]=outl_ratio
+                    ho["outlier_power_fraction"]=outl_power
+                    ho["outlier_any_fraction"]=outl_any
+                    ho["sat_rows_rejected"]=sat_rows_rejected
                 ho["satellite_template"]=satellite_template
                 if len(sat_avg_tx) > 0:
                     # per code: pulses averaged, and their scatter about the average
