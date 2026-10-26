@@ -248,11 +248,14 @@ def column_residuals(AA, Sinv, xhat, mm, first_sat, rel=1e-3):
     negligible (above rel times its largest entry: the rows its echo
     reaches) of |m - A x|^2 / sigma^2. The measurement mm is already divided
     by sigma (Sinv the diagonal of 1/sigma, AA the unweighted design matrix,
-    rows as solved). When the column describes the echo it removes it, and
-    the value is about 1 (the noise; a little less, as the column's own fit
-    takes one degree of freedom of its ~10 rows). An echo the column does
-    not describe (wrong delay or Doppler, or no satellite's shape) leaves it
-    larger. NaN for a column without rows.
+    rows as solved, so rows removed by the outlier tests are not counted).
+    sigma is each row's weight level: with variance weights the running mean
+    of |m|^2 over ten pulses, which includes the echo's own power. So the
+    value is the residual over the row's local power, not over the noise:
+    below 1 where the echo was removed, and an echo the column does not
+    describe (wrong delay or Doppler, or not a satellite's shape) raises it
+    above 1 only when the echo is confined to a few of those ten pulses; an
+    echo left on a long pass stays near 1. NaN for a column without rows.
     """
     x = n.nan_to_num(xhat)
     res = mm - Sinv.dot(AA.dot(x))

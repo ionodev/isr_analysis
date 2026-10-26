@@ -36,9 +36,12 @@ PERIOD_S = 10
 
 FAILED, BOUND, NOISY, SATELLITE = 1, 2, 4, 8
 RESIDUAL = 16
-# a column's rows hold residual power of twice the noise: an echo left at
-# about the noise level per row (0 dB) or brighter. Where the column removed
-# the echo the value is about 0.9 (the noise less the column's own fit)
+# a column's rows hold residual power of twice their local level (the
+# variance weights' running mean of |m|^2 over ten pulses, which includes the
+# echo itself; outlier_lpi.column_residuals). Below 1 where the column removed
+# the echo. An echo left on a pass longer than about ten pulses raises the
+# weights with it and stays near 1, so the flag catches only echoes left on a
+# few pulses: "not flagged" is not evidence that an echo was removed
 RESIDUAL_THRESHOLD = 2.0
 KM_PER_US = 299792458.0 / 2 / 1e9
 

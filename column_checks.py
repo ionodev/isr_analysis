@@ -20,9 +20,7 @@ their variances (sat_amp_e, sat_amp_var):
             P(S > x) = exp(-x^2) per trial of df; with about 3 independent df
             trials (6 kHz times 450 us) and a significance of 1e-3 that is
             x = 2.83. The lags are not independent (the same samples enter
-            every lag), so the threshold is taken from the pure-plasma
-            control's random columns instead (their 99.9th percentile of S),
-            when given (--null)
+            every lag), so this threshold is approximate
     T2      the echo is coherent: with the fitted df, the de-rotated weighted
             mean over the long lags 31-45 (310-450 us), projected on that
             over the short lags 1-15 (10-150 us), rho = Re(A_long A_short*) /
@@ -49,7 +47,7 @@ whose pulse and delay are a catalogue detection's is "detected", the rest
 were added by the tracker (or are random control columns).
 
 Usage:
-    python3 column_checks.py <lpi_dir> <out.npz> [--catalogue DIR] [--null NULL.npz] [--jobs 16]
+    python3 column_checks.py <lpi_dir> <out.npz> [--catalogue DIR] [--jobs 16]
 """
 
 import argparse

@@ -437,7 +437,8 @@ class RandomControlColumns:
     column the base gives, on its own pulse and on the pulses within
     `neighbours` of it (the clutter-subtracted products carry the echoes of
     the pulse a pulse is differenced against), by at least avoid_delay
-    samples (the pulse length) in delay and avoid_doppler_hz in Doppler.
+    samples (the pulse length) in delay and avoid_doppler_hz in Doppler
+    (clear in both).
     The draws are seeded by the seed and the period, so a run and its
     analysis see the same columns.
 

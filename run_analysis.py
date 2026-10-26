@@ -97,8 +97,9 @@ def satellite_detections(datadir, cfg):
             raise RuntimeError("the channel delay of %s could not be measured; give satellites.channel_delay_us"
                                % cfg["channel"])
     print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
+    kw = {"strong_pfa": sat["strong_pfa"]} if sat.get("strong_pfa") is not None else {}
     det = satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
-                                     min_snr_db=sat.get("min_snr_db"), strong_pfa=sat.get("strong_pfa"))
+                                     min_snr_db=sat.get("min_snr_db"), **kw)
     if sat.get("track", False):
         det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
     if sat.get("random_columns"):
