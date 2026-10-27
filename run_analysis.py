@@ -129,6 +129,8 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         weighting=cfg.get("weighting", "variance"),
         background_column=cfg.get("background_column", True),
         outlier_rejection=cfg.get("outlier_rejection", True),
+        # remove the lagged products impulses touch (impulse_rows.py)
+        impulse_rows=cfg.get("impulse_rows", False),
         # the satellite stage, and the periods to analyse (None for all)
         satellite_detections=satellite_detections(datadir, cfg),
         periods=cfg.get("periods", None),

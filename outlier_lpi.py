@@ -27,6 +27,8 @@ import millstone_radar_state as mrs
 from radar_timing import TMM as tmm, T_INJECTION as T_injection
 # design matrix columns for detected satellite echoes
 import satellite_columns as satcol
+# rows touched by impulsive interference
+import impulse_rows as improws
 from raw_reader import RawReader
 
 comm=MPI.COMM_WORLD
@@ -396,6 +398,15 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # process that is the same at every range (Virtanen et al.,
               # 2014). False leaves it out.
               background_column=True,
+              # remove the lagged products that impulsive interference touches
+              # (impulse_rows.py; memo 21's power-line sparks): every row of
+              # every lag whose samples, widened by the filter and by the lag,
+              # touch a detected impulse in the pulse or in the pulse it is
+              # differenced against, from the measurement, the theory matrix
+              # and the satellite columns alike. The removed rows are left out
+              # of the variance weights too. False leaves the inversion as it
+              # was.
+              impulse_rows=False,
               ):
     if weighting not in WEIGHTINGS:
         raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
@@ -526,6 +537,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         S=[]
         mgs=[]
         mes=[]
+        # per lag, for every entry of A[li], the rows touched by an impulse
+        # (impulse_rows); the impulse samples found, and the samples searched
+        hits=[]
+        n_imp_samples=0
+        n_imp_searched=0
 #        sigmas=[]
         idxms=[]
         rmins=[]
@@ -559,6 +575,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             S.append([])
             mgs.append([])
             mes.append([])
+            hits.append([])
         n_good_estimates=0
 
         avg_pwr=0.0
@@ -699,6 +716,18 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
             # normalize tx pwr
             z_tx=z_tx/n.sqrt(n.sum(n.real(z_tx*n.conj(z_tx))))
+            if impulse_rows:
+                # the impulses of this pulse and of the one it is differenced
+                # against, found in the raw voltage of the echo window (both
+                # have the same code, so the same window), and the filtered
+                # samples they reach
+                hot=improws.detect(z_echo,gc,last_echo)
+                if next_key is not None:
+                    hot|=improws.detect(z_echo1,gc,last_echo)
+                n_imp_samples+=int(n.sum(hot))
+                n_imp_searched+=max(min(last_echo,len(z_echo))-gc,0)*(2 if next_key is not None else 1)
+                touched=improws.widen(hot,filter_len)
+
             z_echo[last_echo:10000]=0.0
             z_echo1[last_echo:10000]=0.0
 
@@ -793,6 +822,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
                     mgs[li].append(measg[m0:m1])
                     mes[li].append(mease[m0:m1])
+                    if impulse_rows:
+                        hits[li].append(improws.hit_rows(touched,lags[li+ai],decim,m0,m1))
                     A[li].append(TM)
                     S[li].append([(sat_col0+si,satcol.template_lag_column(st,lags[li+ai],decim,m0,m1)) for si,st in enumerate(sat_templates)])
             t1=time.time()
@@ -842,6 +873,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         outl_power=n.full(n_lags,n.nan,dtype=n.float32)
         outl_any=n.full(n_lags,n.nan,dtype=n.float32)
         sat_rows_rejected=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # per lag, the fraction of rows removed for impulses (impulse_rows)
+        imp_removed=n.full(n_lags,n.nan,dtype=n.float32)
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
@@ -938,9 +971,16 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     localized_sigma=localized_sigma.astype(n.float64)
                 wf=n.repeat(1/10,10)
                 WF=fft(wf,localized_sigma.shape[0])
-                for ri in range(mm_em.shape[1]):
-                    # we need to wrap around, to avoid too low values.
-                    localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-5)
+                if impulse_rows:
+                    # the rows an impulse touches, removed below; the running
+                    # mean of the weights is taken over the other rows
+                    hit=n.array(hits[li],dtype=bool).reshape(n_ipp,n_meas)
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,10)
+                    imp_removed[li]=n.mean(hit)
+                else:
+                    for ri in range(mm_em.shape[1]):
+                        # we need to wrap around, to avoid too low values.
+                        localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-5)
 
                 # make sure we don't have a division by zero
                 msig=n.nanmedian(localized_sigma)
@@ -989,6 +1029,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     # these will be shit no matter what
                     mm_em[localized_sigma > 100*msig]=n.nan
                     mm_gm[localized_sigma > 100*msig]=n.nan
+
+                if impulse_rows:
+                    mm_em[hit]=n.nan
+                    mm_gm[hit]=n.nan
 
                 ok_count+=n.sum((n.isnan(mm_em)!=True)*(n.isnan(mm_gm)!=True),axis=0)
                 meas_count+=n_ipp
@@ -1230,6 +1274,16 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["weighting"]=weighting
             if not background_column:
                 ho["background_column"]=False
+            if impulse_rows:
+                # the rows removed for impulses: per lag, the fraction of the
+                # period's rows; the fraction of the echo-window samples found
+                # to be impulses; and the detection settings
+                ho["impulse_rows"]=True
+                ho["impulse_rows_removed_fraction"]=imp_removed
+                ho["impulse_sample_fraction"]=n_imp_samples/max(n_imp_searched,1)
+                ho["impulse_thresh"]=improws.THRESH
+                ho["impulse_guard"]=improws.GUARD
+                ho["impulse_window"]=improws.WINDOW
             if satellite_detections is not None:
                 # one entry per satellite column: the pulse, and the delay
                 # (samples, relative to the transmit template) and Doppler (Hz)
