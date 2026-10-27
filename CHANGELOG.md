@@ -46,6 +46,39 @@ this branch applies; record `review/records/2026-10-12-apply-review-decisions.md
   `plot_raw_voltage.py`) leave `main` for now; they are kept on the branch
   `main-before-review-2026-10-03`. The unit tests stay (da1bdac).
 
+## Pending: the weeks 7-9 delivery (pull request, to be dated at the merge)
+
+Record `review/records/2026-10-27-weeks-7-9.md`. Every new behaviour is off
+by default; the benchmark against `main` is in the record.
+
+### Added
+- **Pass tracking of satellite echoes** (Memo 45): `satellites.track` links
+  the catalogue's detections into passes and gives a satellite column to
+  every pulse of a pass, also those the detector missed
+  (`satellite_columns.TrackedDetections`); the satellite unknowns are
+  eliminated pulse by pulse (`outlier_lpi.schur_solve`) so that thousands of
+  columns fit in memory (fd2c4b6).
+- **A lower detection threshold confirmed by tracking** (Memo 48): the
+  detector's `--pfa`; `strong_pfa` marks the detections above the default
+  threshold as strong, and `track_options.min_weak_pulses` keeps a pass of
+  weak detections only when they lie on that many pulses (8b26247).
+- **The pure-plasma control and per-column checks** (Memo 48):
+  `random_columns` (`RandomControlColumns`), `column_checks.py`, the residual
+  of each column's rows (`sat_resid`) and the `RESIDUAL` flag of
+  `fit_quality.py` (5a6a298, 49d7ac8, 01e10b9).
+- **Removal of the impulse-hit rows** (Memo 47): `impulse_rows` removes the
+  lagged products that detected power-line impulses touch (7173173).
+- **Variance weights without the row itself** (Memo 51):
+  `weights_exclude_self` takes each row's variance weight from the other rows
+  of its ten-pulse window. The present weights include the row, which biases
+  every variance-weighted ACF low (17-25 % below 400 km against equal
+  weights) and makes the impulse-row removal biased; leave-one-out weights
+  remove both (67c12a8).
+- Analysis scripts for Memos 45-52: the end-to-end and impulse injections
+  (`end_to_end_injection.py`, `inject_impulses.py`), `change_table.py`,
+  `eclipse_timing.py`, `eclipse_analysis.py`, `weight_bias_mc.py`, and the
+  measure and plot scripts (5edee86 and earlier).
+
 ## 2026-10-12
 
 ### Added
