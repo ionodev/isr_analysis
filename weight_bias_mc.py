@@ -12,7 +12,7 @@ rows are). The weighted mean of the rows estimates s.
 First-order theory: with the row in its own weight, Cov(|m|^2, m) = s sigma^2,
 so the estimate is pulled towards zero by 1 / ((1 + SNR) N), with N the kept
 rows in the running mean; left out, the weight is independent of the row's
-noise and there is no bias.
+noise and there is no bias (within the Monte Carlo noise).
 
 A lagged product is not "signal plus Gaussian noise" but the product of two
 Gaussian samples, m = z1 z2* (plasma with correlation rho between them, plus
