@@ -16,7 +16,8 @@ Per band, over all (window, gate) pairs where both runs have a value:
                 not independent and are not added in quadrature.
 
 and at the Starlink shells (535-590 km), for each run, the share of fitted
-gates with T_e below 1000 K and the median T_e.
+gates with T_e below 1000 K and the median T_e of the good gates
+(fit_quality.good), as in Memo 45's table.
 
     python3 change_table.py <before_dir> <after_dir> <YYYY-MM-DD> [out.json]
 """
@@ -69,7 +70,8 @@ def shells(F):
     m = (F["r"] >= 535) & (F["r"] <= 590)
     te = F["Te"][:, m]
     ok = n.isfinite(te)
-    return dict(shell_Te_below_1000=float(n.mean(te[ok] < 1000)), shell_median_Te=float(n.nanmedian(te)))
+    good = fq.good(fq.flags(F))[:, m]
+    return dict(shell_Te_below_1000=float(n.mean(te[ok] < 1000)), shell_median_Te_good=float(n.nanmedian(te[good])))
 
 
 def main():
@@ -83,7 +85,7 @@ def main():
             x["band"], x["ne_ratio"], x["dTe"], x["dTi"], x["abs_dvi"], 100 * x["moved_2sig"], x["gates"]))
     for k in ("before", "after"):
         s = res["shells_" + k]
-        print("  shells %-6s Te<1000 K %.3f, median Te %.0f K" % (k, s["shell_Te_below_1000"], s["shell_median_Te"]))
+        print("  shells %-6s Te<1000 K %.3f, median Te (good gates) %.0f K" % (k, s["shell_Te_below_1000"], s["shell_median_Te_good"]))
     if len(sys.argv) > 4:
         json.dump(res, open(sys.argv[4], "w"), indent=1)
 
