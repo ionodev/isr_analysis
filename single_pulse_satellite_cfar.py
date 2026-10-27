@@ -267,6 +267,27 @@ def ambiguity_power(
     return power, kept_frequencies
 
 
+def cfar_alpha(pfa: float, pulse_length: int, decimation_factor: int = 8) -> float:
+    """
+    The CA-CFAR threshold factor cfar_peaks uses for a false-alarm
+    probability pfa per cell, an integrated (decimated) pulse length and a
+    decimation factor: the same training geometry as cfar_peaks with
+    detect_pulse's training padding.  A detection's cfar_ratio against this
+    tells whether it would pass at pfa, so a catalogue made at a lower pfa
+    can be split into the detections the default 1e-10 would have made and
+    the weaker ones.
+    """
+    length = int(pulse_length)
+    guard_r = length
+    train_r = length + max(ceil_div(128, decimation_factor), length // 4)
+    guard_f = 5
+    train_f = 12
+    outer_n = (2 * train_r + 1) * (2 * train_f + 1)
+    inner_n = (2 * guard_r + 1) * (2 * guard_f + 1)
+    ntrain = outer_n - inner_n
+    return float(np.float32(ntrain * math.expm1(-math.log(pfa) / ntrain)))
+
+
 def cfar_peaks(
     power: np.ndarray,
     frequencies: np.ndarray,
@@ -480,6 +501,8 @@ def process_chunk(data_dir: Path, start: int, stop: int, modes, antenna_state, a
         channel = selected_channel(antenna_state, int(sample))
         if channel is None:
             continue
+        if args.channels and channel not in args.channels:
+            continue
         try:
             detections.extend(detect_pulse(rf, int(sample), sweep_id, channel, args, fft_bank))
             pulses_processed += 1
@@ -654,6 +677,8 @@ def finalize_metadata(output_dir: Path, work_dir: Path, chunks: list[tuple[int, 
             h5.attrs["fft_padding"] = args.fft_padding
             h5.attrs["max_doppler_hz"] = args.max_doppler_hz
             h5.attrs["pfa_per_cell"] = args.pfa
+            if args.channels:
+                h5.attrs["channels"] = ",".join(args.channels)
             h5.attrs["modes"] = args.modes
             h5.attrs["pulses_processed"] = total_pulses
             h5.attrs["failed_pulses"] = total_failures
@@ -685,6 +710,8 @@ def parser():
     p.add_argument("--max-doppler-hz", type=float, default=60_000.0)
     p.add_argument("--pfa", type=float, default=1e-10)
     p.add_argument("--max-echoes-per-pulse", type=int, default=32)
+    p.add_argument("--channels", default=None,
+                   help="comma-separated receivers to search (default: both)")
     p.add_argument("--no-finalize", action="store_true")
     return p
 
@@ -702,6 +729,9 @@ def main():
         raise ValueError("--max-doppler-hz exceeds the decimated Nyquist frequency")
     if not 0 < args.pfa < 1:
         raise ValueError("--pfa must be between zero and one")
+    args.channels = tuple(c.strip() for c in args.channels.split(",")) if args.channels else None
+    if args.channels and any(c not in CHANNEL_NAMES for c in args.channels):
+        raise ValueError("--channels must name receivers among %s" % (CHANNEL_NAMES,))
     args.data = args.data.resolve()
     args.output = args.output.resolve()
     work_dir = (args.work_dir or args.output.with_name(args.output.name + ".work")).resolve()

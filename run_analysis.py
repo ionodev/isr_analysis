@@ -34,6 +34,22 @@ if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and n
 os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
 
+def barrier():
+    """
+    Wait until every MPI rank has finished the current step. Each rank does
+    its own share of a step and then goes on to the next, so without this a
+    rank starts fit_lpi (or fit_lp) while others are still writing the files
+    it groups: the fit windows then depend on timing, and some are fitted
+    from incomplete groups (seen on 12 October in the variant runs). Without
+    mpi4py, or with one process, it does nothing.
+    """
+    try:
+        from mpi4py import MPI
+    except ImportError:
+        return
+    MPI.COMM_WORLD.Barrier()
+
+
 def load_config(path):
     with open(path) as f:
         return json.load(f)
@@ -51,6 +67,21 @@ def satellite_detections(datadir, cfg):
             "channel_delay_us": tx-h to echo channel delay; null measures it
                          from the data (tx_delay.py),
             "min_snr_db": only echoes at least this strong (optional),
+            "track": link the detections into passes and give a column to
+                     every pulse of a pass, detected or not
+                     (satellite_columns.TrackedDetections; default false),
+            "track_options": keyword arguments of TrackedDetections
+                     (optional; {"min_weak_pulses": 3} confirms the weak
+                     detections of a lower-threshold catalogue by tracking),
+            "strong_pfa": with a catalogue made at a lower false-alarm
+                     probability, the probability whose threshold marks a
+                     detection strong (e.g. 1e-10, the default catalogue's);
+                     the others are weak (optional),
+            "random_columns": keyword arguments of
+                     satellite_columns.RandomControlColumns, e.g.
+                     {"per_period": 200, "seed": 1}: extra columns at random
+                     places without an echo, the pure-plasma control
+                     (optional; for tests only),
             "enabled": true (optional)
         }
     """
@@ -66,8 +97,15 @@ def satellite_detections(datadir, cfg):
             raise RuntimeError("the channel delay of %s could not be measured; give satellites.channel_delay_us"
                                % cfg["channel"])
     print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
-    return satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
-                                      min_snr_db=sat.get("min_snr_db"))
+    kw = {"strong_pfa": sat["strong_pfa"]} if sat.get("strong_pfa") is not None else {}
+    det = satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
+                                     min_snr_db=sat.get("min_snr_db"), **kw)
+    if sat.get("track", False):
+        det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
+    if sat.get("random_columns"):
+        # the pure-plasma control: columns where no echo is
+        det = satcol.RandomControlColumns(det, satcol.zenith_pulse_keys(datadir), **sat["random_columns"])
+    return det
 
 
 def run_lpi(datadir, output_base, cfg, max_time_s=None):
@@ -91,6 +129,10 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         weighting=cfg.get("weighting", "variance"),
         background_column=cfg.get("background_column", True),
         outlier_rejection=cfg.get("outlier_rejection", True),
+        # remove the lagged products impulses touch (impulse_rows.py)
+        impulse_rows=cfg.get("impulse_rows", False),
+        # variance weights without the row's own |m|^2 (Memo 51)
+        weights_exclude_self=cfg.get("weights_exclude_self", False),
         # the satellite stage, and the periods to analyse (None for all)
         satellite_detections=satellite_detections(datadir, cfg),
         periods=cfg.get("periods", None),
@@ -174,6 +216,7 @@ def main():
     if lpi_cfg.get("enabled", False):
         print("=== Step: LPI (lag-profile inversion) ===")
         run_lpi(datadir, output_base, lpi_cfg, max_time_s=max_time_s)
+        barrier()
 
     if steps.get("fit_lpi", {}).get("enabled", False):
         if not lpi_cfg:
@@ -186,6 +229,7 @@ def main():
     if lp_cfg.get("enabled", False):
         print("=== Step: long_pulse (range-Doppler spectra) ===")
         run_long_pulse(datadir, output_base, lp_cfg, max_time_s=max_time_s)
+        barrier()
 
     if steps.get("fit_lp", {}).get("enabled", False):
         if not lp_cfg:
