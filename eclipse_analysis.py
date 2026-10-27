@@ -172,6 +172,9 @@ def main():
     json.dump(allres, open(out, "w"), indent=1, default=float)
     if plot:
         make_plots(plot, *first)
+        d7, d8 = args[1].split("=", 1)[1].split(",")
+        plot_difference_map(plot, d7, d8, first[0])
+        plot_profiles(plot, d7, d8, first[0])
 
 
 def make_plots(prefix, name, rows, res):
@@ -213,6 +216,90 @@ def make_plots(prefix, name, rows, res):
     ax[0].set_title("Zenith, %s: grey band = partial eclipse at Millstone Hill, dashed = maximum" % name)
     fig.tight_layout()
     fig.savefig(prefix + "_timeseries.png", dpi=110)
+
+
+def binned_maps(d7, d8):
+    """Median of the good gates in 10-minute bins of UTC, both days on the
+    same grid: (hours, ranges, {key: (map7, map8)})."""
+    out = {}
+    for day, d in zip(DAYS, (d7, d8)):
+        d0 = day0(day)
+        F = fq.load_fits(d, (d0 + 11 * 3600, d0 + 23 * 3600))
+        good = fq.good(fq.flags(F))
+        t = 0.5 * (F["t0"] + F["t1"]) - d0
+        edges = n.arange(11 * 3600, 23 * 3600 + 1, BIN_S)
+        for key in ("ne", "Te", "Ti", "vi"):
+            v = n.where(good, F[key], n.nan)
+            M = n.full((len(edges) - 1, len(F["r"])), n.nan)
+            for b, (a, c) in enumerate(zip(edges[:-1], edges[1:])):
+                m = (t >= a) & (t < c)
+                if m.any():
+                    with n.errstate(all="ignore"):
+                        M[b] = n.nanmedian(v[m], axis=0)
+            out.setdefault(key, []).append(M)
+        r = F["r"]
+    h = (n.arange(11 * 3600, 23 * 3600, BIN_S) + BIN_S / 2) / 3600
+    return h, r, out
+
+
+def plot_difference_map(prefix, d7, d8, title):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    h, r, M = binned_maps(d7, d8)
+    fig, ax = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
+    with n.errstate(all="ignore"):
+        panels = ((n.log10(M["ne"][1] / M["ne"][0]), "RdBu_r", -0.4, 0.4, "log$_{10}$($n_e$ 8 Apr / 7 Apr)"),
+                  (M["Te"][1] - M["Te"][0], "RdBu_r", -800, 800, "$T_e$ 8 Apr $-$ 7 Apr (K)"),
+                  (M["Ti"][1] - M["Ti"][0], "RdBu_r", -400, 400, "$T_i$ 8 Apr $-$ 7 Apr (K)"))
+    he = n.concatenate([h - BIN_S / 7200, [h[-1] + BIN_S / 7200]])
+    re = n.concatenate([r - 0.5 * (r[1] - r[0]), [r[-1] + 0.5 * (r[1] - r[0])]])
+    for a, (z, cm, lo, hi, lab) in zip(ax, panels):
+        pc = a.pcolormesh(he, re, z.T, cmap=cm, vmin=lo, vmax=hi)
+        fig.colorbar(pc, ax=a, label=lab)
+        a.set_ylim(150, 700)
+        a.set_ylabel("altitude (km)")
+        for x in (18 + 16 / 60, 20 + 39 / 60):
+            a.axvline(x, color="k", ls=":", lw=0.8)
+        a.axvline(MAX_GROUND_H, color="k", ls="--", lw=0.8)
+    ax[0].set_title(title + ": 8 minus 7 April at the same UTC, 10-min medians of good gates")
+    ax[-1].set_xlabel("hours (UTC)")
+    fig.tight_layout()
+    fig.savefig(prefix + "_diffmap.png", dpi=110)
+
+
+def plot_profiles(prefix, d7, d8, title, windows=((18.0, 18.25), (19.42, 19.75), (21.0, 21.33))):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, 3, figsize=(11, 4.6), sharey=True)
+    styles = (("-", "before"), ("-", "maximum"), ("-", "after"))
+    cols = ("tab:green", "tab:purple", "tab:orange")
+    for day, d, ls in zip(DAYS, (d7, d8), (":", "-")):
+        d0 = day0(day)
+        F = fq.load_fits(d, (d0 + 11 * 3600, d0 + 23 * 3600))
+        good = fq.good(fq.flags(F))
+        t = (0.5 * (F["t0"] + F["t1"]) - d0) / 3600
+        for (a, b), c, (_, lab) in zip(windows, cols, styles):
+            m = (t >= a) & (t < b)
+            for k, key in enumerate(("ne", "Te", "Ti")):
+                v = n.where(good[m], F[key][m], n.nan)
+                with n.errstate(all="ignore"):
+                    med = n.nanmedian(v, axis=0)
+                x = med * 1e-12 if key == "ne" else med
+                ax[k].plot(x, F["r"], ls, color=c, label="%s %s (%02d:%02d-%02d:%02d)" % (
+                    day[5:], lab, int(a), round(a % 1 * 60), int(b), round(b % 1 * 60)) if k == 0 else None)
+    ax[0].set_xlabel("$n_e$ ($10^{12}$ m$^{-3}$)")
+    ax[1].set_xlabel("$T_e$ (K)")
+    ax[2].set_xlabel("$T_i$ (K)")
+    ax[0].set_ylabel("altitude (km)")
+    ax[0].set_ylim(150, 650)
+    ax[1].set_xlim(500, 3500)
+    ax[2].set_xlim(500, 2000)
+    ax[0].legend(fontsize=7)
+    ax[1].set_title(title + ": profiles, dotted 7 April, solid 8 April (UTC windows)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(prefix + "_profiles.png", dpi=110)
 
 
 if __name__ == "__main__":
