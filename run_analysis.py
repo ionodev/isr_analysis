@@ -67,6 +67,21 @@ def satellite_detections(datadir, cfg):
             "channel_delay_us": tx-h to echo channel delay; null measures it
                          from the data (tx_delay.py),
             "min_snr_db": only echoes at least this strong (optional),
+            "track": link the detections into passes and give a column to
+                     every pulse of a pass, detected or not
+                     (satellite_columns.TrackedDetections; default false),
+            "track_options": keyword arguments of TrackedDetections
+                     (optional; {"min_weak_pulses": 3} confirms the weak
+                     detections of a lower-threshold catalogue by tracking),
+            "strong_pfa": with a catalogue made at a lower false-alarm
+                     probability, the probability whose threshold marks a
+                     detection strong (e.g. 1e-10, the default catalogue's);
+                     the others are weak (optional),
+            "random_columns": keyword arguments of
+                     satellite_columns.RandomControlColumns, e.g.
+                     {"per_period": 200, "seed": 1}: extra columns at random
+                     places without an echo, the pure-plasma control
+                     (optional; for tests only),
             "enabled": true (optional)
         }
     """
@@ -82,8 +97,15 @@ def satellite_detections(datadir, cfg):
             raise RuntimeError("the channel delay of %s could not be measured; give satellites.channel_delay_us"
                                % cfg["channel"])
     print("satellite stage: catalogue %s, channel delay %.2f us" % (sat["catalogue"], delay))
-    return satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
-                                      min_snr_db=sat.get("min_snr_db"))
+    kw = {"strong_pfa": sat["strong_pfa"]} if sat.get("strong_pfa") is not None else {}
+    det = satcol.CatalogueDetections(sat["catalogue"], cfg["channel"], delay,
+                                     min_snr_db=sat.get("min_snr_db"), **kw)
+    if sat.get("track", False):
+        det = satcol.TrackedDetections(det, satcol.zenith_pulse_keys(datadir), **sat.get("track_options", {}))
+    if sat.get("random_columns"):
+        # the pure-plasma control: columns where no echo is
+        det = satcol.RandomControlColumns(det, satcol.zenith_pulse_keys(datadir), **sat["random_columns"])
+    return det
 
 
 def run_lpi(datadir, output_base, cfg, max_time_s=None):
@@ -107,6 +129,10 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         weighting=cfg.get("weighting", "variance"),
         background_column=cfg.get("background_column", True),
         outlier_rejection=cfg.get("outlier_rejection", True),
+        # remove the lagged products impulses touch (impulse_rows.py)
+        impulse_rows=cfg.get("impulse_rows", False),
+        # variance weights without the row's own |m|^2 (Memo 51)
+        weights_exclude_self=cfg.get("weights_exclude_self", False),
         # the satellite stage, and the periods to analyse (None for all)
         satellite_detections=satellite_detections(datadir, cfg),
         periods=cfg.get("periods", None),

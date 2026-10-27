@@ -18,8 +18,13 @@ MISA cycles, so the fits come in groups of three one-minute windows with
 gaps; the time axis keeps the gaps. Altitude is taken as range (the zenith
 beam is at 88 degrees elevation, Memo 37: altitude = 0.9995 range).
 
+With --raw, the parameter figure shows every fitted value as it is: no
+flagged gates greyed, no echo dots, each fit's column extended to the next
+fit however long the gap, and colour maps without black (written as
+<name>_params_raw.png).
+
 Usage:
-    python3 eclipse_plots.py <fits_dir> <day YYYY-MM-DD> <out_prefix> [<echoes.npy>] [<other_fits_dir>]
+    python3 eclipse_plots.py [--raw] <fits_dir> <day YYYY-MM-DD> <out_prefix> [<echoes.npy>] [<other_fits_dir>]
 """
 
 import datetime
@@ -83,9 +88,14 @@ def panel(ax, tg, r, z, day0, cmap, vmin, vmax, label, log=False, overlay=None, 
 
 
 def main():
-    fdir, day, prefix = sys.argv[1:4]
-    echoes = n.load(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] != "-" else None
-    other = sys.argv[5] if len(sys.argv) > 5 else None
+    global MAX_COLUMN_S
+    raw = "--raw" in sys.argv
+    argv = [a for a in sys.argv if a != "--raw"]
+    if raw:
+        MAX_COLUMN_S = n.inf
+    fdir, day, prefix = argv[1:4]
+    echoes = n.load(argv[4]) if len(argv) > 4 and argv[4] != "-" else None
+    other = argv[5] if len(argv) > 5 else None
     day0 = datetime.datetime.fromisoformat(day).replace(tzinfo=datetime.timezone.utc).timestamp()
     t_lo, t_hi = day0 + 11 * 3600, day0 + 23 * 3600
     F = fq.load_fits(fdir, (t_lo, t_hi))
@@ -102,14 +112,24 @@ def main():
     clean = lambda k: n.where(gb, n.nan, G[k][1])
 
     fig, ax = plt.subplots(4, 1, figsize=(11, 12), sharex=True)
-    panel(ax[0], tg, redges, clean("ne"), day0, "viridis", 10.8, 12.2, "log$_{10}$ $n_e$ (m$^{-3}$)", log=True, overlay=gb, hatch=gs)
-    panel(ax[1], tg, redges, clean("Te"), day0, "inferno", 500, 3500, "$T_e$ (K)", overlay=gb, hatch=gs)
-    panel(ax[2], tg, redges, clean("Ti"), day0, "inferno", 500, 2000, "$T_i$ (K)", overlay=gb, hatch=gs)
-    panel(ax[3], tg, redges, clean("vi"), day0, "RdBu_r", -150, 150, "$v_i$ (m/s, positive away)", overlay=gb, hatch=gs)
-    ax[0].set_title(title + ": grey = flagged (failed, fit limit, noisy); dots = catalogued satellite echo; dashed = eclipse")
+    if raw:
+        # every fitted value as it is: no flags, no dots, no black
+        panel(ax[0], tg, redges, G["ne"][1], day0, "viridis", 10.8, 12.2, "log$_{10}$ $n_e$ (m$^{-3}$)", log=True)
+        panel(ax[1], tg, redges, G["Te"][1], day0, "Spectral_r", 0, 3500, "$T_e$ (K)")
+        panel(ax[2], tg, redges, G["Ti"][1], day0, "Spectral_r", 0, 2000, "$T_i$ (K)")
+        panel(ax[3], tg, redges, G["vi"][1], day0, "RdBu_r", -150, 150, "$v_i$ (m/s, positive away)")
+        ax[0].set_title(title + ": every fitted value, unflagged; dashed = eclipse")
+    else:
+        panel(ax[0], tg, redges, clean("ne"), day0, "viridis", 10.8, 12.2, "log$_{10}$ $n_e$ (m$^{-3}$)", log=True, overlay=gb, hatch=gs)
+        panel(ax[1], tg, redges, clean("Te"), day0, "inferno", 500, 3500, "$T_e$ (K)", overlay=gb, hatch=gs)
+        panel(ax[2], tg, redges, clean("Ti"), day0, "inferno", 500, 2000, "$T_i$ (K)", overlay=gb, hatch=gs)
+        panel(ax[3], tg, redges, clean("vi"), day0, "RdBu_r", -150, 150, "$v_i$ (m/s, positive away)", overlay=gb, hatch=gs)
+        ax[0].set_title(title + ": grey = flagged (failed, fit limit, noisy); dots = catalogued satellite echo; dashed = eclipse")
     ax[-1].set_xlabel("hours (UTC)")
     fig.tight_layout()
-    fig.savefig(prefix + "_params.png", dpi=110)
+    fig.savefig(prefix + ("_params_raw.png" if raw else "_params.png"), dpi=110)
+    if raw:
+        return
 
     fig, ax = plt.subplots(4, 1, figsize=(11, 12), sharex=True)
     with n.errstate(invalid="ignore", divide="ignore"):
