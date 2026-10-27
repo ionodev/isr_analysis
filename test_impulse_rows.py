@@ -128,3 +128,24 @@ def test_masked_running_sigma():
     s = ir.masked_running_sigma(q, keep, 10)
     assert s[:, 2].max() < 2.0
     assert n.allclose(s[:, [0, 1, 3, 4]], plain[:, [0, 1, 3, 4]])
+
+
+def test_running_sigma_exclude_self():
+    """With exclude_self, a row's weight is the mean |m|^2 of the other kept
+    rows of its window (i-4 ... i+5), and does not depend on its own value."""
+    rng = n.random.default_rng(3)
+    p = rng.exponential(1.0, (40, 2))
+    keep = n.ones(p.shape, dtype=bool)
+    keep[12, 0] = False
+    s = ir.masked_running_sigma(p, keep, 10, exclude_self=True) ** 2
+    for i, c in ((20, 1), (14, 0)):
+        idx = [j for j in range(i - 4, i + 6) if j != i and keep[j, c]]
+        assert n.isclose(s[i, c], p[idx, c].mean())
+    q = p.copy()
+    q[20, 1] *= 100.0
+    s2 = ir.masked_running_sigma(q, keep, 10, exclude_self=True) ** 2
+    assert n.isclose(s2[20, 1], s[20, 1])
+    # off: unchanged
+    a = ir.masked_running_sigma(p, keep, 10)
+    b = ir.masked_running_sigma(p, keep, 10, exclude_self=False)
+    assert n.array_equal(a, b)

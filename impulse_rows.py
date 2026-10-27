@@ -93,7 +93,7 @@ def hit_rows(touched, lag, decim, m0, m1):
     return decim.decimate(t.astype(n.float64))[m0:m1] > 0
 
 
-def masked_running_sigma(p, keep, width=10):
+def masked_running_sigma(p, keep, width=10, exclude_self=False):
     """
     The per-row noise level of the variance weights, a running mean of |m|^2
     over `width` pulses (outlier_lpi: a circular moving average along the
@@ -103,6 +103,14 @@ def masked_running_sigma(p, keep, width=10):
     same shape. Where none of the `width` pulses is kept the plain running
     mean is used (those rows are removed anyway, unless a neighbour's
     impulse caused it).
+
+    exclude_self: leave each row's own |m|^2 out of its running mean. A
+    weight estimated from data that include the row itself is correlated
+    with that row's noise: a row whose noise happens to raise |m|^2 gets a
+    lower weight, which pulls the weighted estimate towards zero by about
+    1/(number of rows in the mean). Removing rows lowers that number, so the
+    pull grows with the share of rows removed (the impulse injection test of
+    Memo 51). Leaving the row out removes the correlation.
     """
     from numpy.fft import fft, ifft
     wf = n.repeat(1.0 / width, width)
@@ -111,6 +119,13 @@ def masked_running_sigma(p, keep, width=10):
     num = ifft(WF * fft(p * k, axis=0), axis=0).real
     den = ifft(WF * fft(k, axis=0), axis=0).real
     plain = ifft(WF * fft(p, axis=0), axis=0).real
+    if exclude_self:
+        # the running mean at index j covers the rows j-width+1 ... j and is
+        # assigned to row j - width//2 by the roll below; take that row out
+        sh = width // 2
+        num = num - n.roll(p * k, sh, axis=0) / width
+        den = den - n.roll(k, sh, axis=0) / width
+        plain = (plain - n.roll(p, sh, axis=0) / width) * width / (width - 1.0)
     # den is a multiple of 1/width; below half of that no row was kept
     m = n.where(den > 0.5 / width, num / n.maximum(den, 1e-300), plain)
     return n.roll(n.sqrt(n.maximum(m, 0.0)), -(width // 2), axis=0)

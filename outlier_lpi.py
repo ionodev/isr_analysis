@@ -407,6 +407,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # of the variance weights too. False leaves the inversion as it
               # was.
               impulse_rows=False,
+              # leave each row's own |m|^2 out of the running mean that gives
+              # its variance weight (impulse_rows.masked_running_sigma,
+              # exclude_self): removes the pull towards zero of weights
+              # estimated from the row itself, which grows when rows are
+              # removed (Memo 51). False leaves the weights as they were.
+              weights_exclude_self=False,
               ):
     if weighting not in WEIGHTINGS:
         raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
@@ -975,8 +981,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     # the rows an impulse touches, removed below; the running
                     # mean of the weights is taken over the other rows
                     hit=n.array(hits[li],dtype=bool).reshape(n_ipp,n_meas)
-                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,10)
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,10,exclude_self=weights_exclude_self)
                     imp_removed[li]=n.mean(hit)
+                elif weights_exclude_self:
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,n.ones(localized_sigma.shape,dtype=bool),10,exclude_self=True)
                 else:
                     for ri in range(mm_em.shape[1]):
                         # we need to wrap around, to avoid too low values.
@@ -1274,6 +1282,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["weighting"]=weighting
             if not background_column:
                 ho["background_column"]=False
+            if weights_exclude_self:
+                ho["weights_exclude_self"]=True
             if impulse_rows:
                 # the rows removed for impulses: per lag, the fraction of the
                 # period's rows; the fraction of the echo-window samples found

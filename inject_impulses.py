@@ -30,7 +30,9 @@ in both and cancel.
 
 Usage:
     mpirun -np 9 python3 inject_impulses.py lpi <case> <out_dir>
-    python3 inject_impulses.py measure <out_dir>
+    python3 inject_impulses.py measure <out_dir> [_eq|_loo]
+(cases with the suffix _eq use equal weights instead of variance weights;
+_loo variance weights without the row's own |m|^2, weights_exclude_self)
 (the fits: run_analysis.py on a config with the lpi step disabled and
 output_dir <out_dir>/<case>)
 """
@@ -54,13 +56,27 @@ POWER_MEDIAN = 53.0
 POWER_SIGMA_LN = 0.90
 SEED = 21
 CASES = {"clean_off": (False, False), "clean_on": (False, True), "inj_off": (True, False), "inj_on": (True, True)}
+# the same with equal weights (no data-dependent weights), for the cause of a
+# bias of the removal under variance weights
+# and with variance weights that leave each row's own |m|^2 out
+# (weights_exclude_self), the candidate fix
+_BASE = dict(CASES)
+CASES.update({k + "_eq": v for k, v in _BASE.items()})
+CASES.update({k + "_loo": v for k, v in _BASE.items()})
+
+
+def _weights(case):
+    """(weighting, weights_exclude_self) of a case, from its suffix."""
+    if case.endswith("_eq"):
+        return "equal", False
+    return "variance", case.endswith("_loo")
 QUIET_CATALOGUE = "/mnt/data/henrik/sat_v2_2026-10/quiet_catalogue_pfa1e-6"
 
 
-def lpi_config(out, impulse_rows):
-    return {"channel": inj.CHANNEL, "range_gate_us": 60, "avg_dur": 10, "min_tx_frac": 0.5,
+def lpi_config(out, impulse_rows, weighting="variance", exclude_self=False):
+    return {"weights_exclude_self": exclude_self, "channel": inj.CHANNEL, "range_gate_us": 60, "avg_dur": 10, "min_tx_frac": 0.5,
             "pass_band_hz": 100000, "filter_len": 20, "max_range_delay_us": 7000, "save_acf_images": False,
-            "lag_avg": 1, "reanalyze": False, "weighting": "variance", "background_column": True,
+            "lag_avg": 1, "reanalyze": False, "weighting": weighting, "background_column": True,
             "outlier_rejection": False, "periods": inj.PERIODS, "impulse_rows": impulse_rows,
             "satellites": {"catalogue": QUIET_CATALOGUE, "channel_delay_us": inj.CHANNEL_DELAY_US, "track": True,
                            "strong_pfa": 1e-10, "track_options": {"min_weak_pulses": 3}}}
@@ -133,12 +149,12 @@ def cmd_lpi(case, out_dir):
         json.dump(dict(case=case, noise_power=noise, n_gaps=N_GAPS, mains_hz=MAINS_HZ, p_single=P_SINGLE,
                        power_median=POWER_MEDIAN, power_sigma_ln=POWER_SIGMA_LN, seed=SEED),
                   open(os.path.join(out, "injection.json"), "w"), indent=1)
-    ra.run_lpi(inj.DATA, out, lpi_config(out, rows))
+    ra.run_lpi(inj.DATA, out, lpi_config(out, rows, *_weights(case)))
 
 
 def fit_config(out_dir, case):
     return {"experiment": "inject_impulses_" + case, "data_dir": inj.DATA, "output_dir": os.path.join(out_dir, case),
-            "steps": {"lpi": dict(lpi_config(out_dir, CASES[case][1]), enabled=False),
+            "steps": {"lpi": dict(lpi_config(out_dir, CASES[case][1], *_weights(case)), enabled=False),
                       "fit_lpi": {"enabled": True, "channel": inj.CHANNEL, "max_dt": 60, "first_lag": 0,
                                   "range_avg": [1, 3, 5], "reanalyze": False}}}
 
@@ -153,9 +169,9 @@ def _lpi(d):
     return out
 
 
-def cmd_measure(out_dir):
+def cmd_measure(out_dir, sfx=""):
     import fit_quality as fq
-    L = {c: _lpi(os.path.join(out_dir, c)) for c in CASES}
+    L = {c: _lpi(os.path.join(out_dir, c + sfx)) for c in ("clean_off", "clean_on", "inj_off", "inj_on")}
     files = sorted(set.intersection(*[set(v) for v in L.values()]))
     r = L["clean_off"][files[0]]["r"]
     band = (r >= 150) & (r <= 600)
@@ -183,8 +199,8 @@ def cmd_measure(out_dir):
         res[c + "_impulse_sample_fraction"] = float(n.nanmean([L[c][f]["samples"] for f in files]))
     # the 60 s fits: inj minus clean, in the clean fit's standard deviation
     fits = {}
-    for c in CASES:
-        F = fq.load_fits(os.path.join(out_dir, c))
+    for c in ("clean_off", "clean_on", "inj_off", "inj_on"):
+        F = fq.load_fits(os.path.join(out_dir, c + sfx))
         if F is not None:
             fits[c] = F
     if len(fits) == 4:
@@ -203,7 +219,7 @@ def cmd_measure(out_dir):
                         dTe=float(n.nanmedian((B["Te"] - A["Te"])[:, g])),
                         dTi=float(n.nanmedian((B["Ti"] - A["Ti"])[:, g])))
             res[m]["fits"] = out
-    json.dump(res, open(os.path.join(out_dir, "measures.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(out_dir, "measures%s.json" % sfx), "w"), indent=1)
     for m in ("off", "on"):
         x = res[m]
         print("removal %-3s: ACF shift lag 0 %+.3f sigma, lags 10-60 us %+.3f +- %.3f sigma; sigma ratio lag 1 %.3f" % (
@@ -222,7 +238,7 @@ def main():
     elif sys.argv[1] == "fitconfig":
         json.dump(fit_config(sys.argv[3], sys.argv[2]), open(sys.argv[4], "w"), indent=1)
     elif sys.argv[1] == "measure":
-        cmd_measure(sys.argv[2])
+        cmd_measure(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "")
 
 
 if __name__ == "__main__":
