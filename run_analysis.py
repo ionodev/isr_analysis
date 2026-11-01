@@ -151,11 +151,23 @@ def run_fit_lpi(datadir, output_base, cfg, lpi_cfg, radar_freq_hz=440.2e6, table
         first_lag=cfg.get("first_lag", 0),
         reanalyze=cfg.get("reanalyze", False),
         range_avg=n.array(cfg.get("range_avg", [1, 3, 5])),
+        # the heights (km) between which each range_avg applies
+        range_limits=n.array(cfg.get("range_limits", [0, 300, 700, 1500])),
         output_base=output_base,
         radar_freq_hz=radar_freq_hz,
         table_dir=table_dir,
         # null (off), "absolute" or "significance": fit_lpi.space_object_flagged
         space_object_cut=cfg.get("space_object_cut", None),
+        # null (independent) or [rho_1, rho_2, ...]: fit_lpi.range_average
+        range_avg_rho=cfg.get("range_avg_rho", None),
+        range_avg_rho_min_km=cfg.get("range_avg_rho_min_km", 0),
+        # null (all lags) or the longest lag fitted, in microseconds
+        max_lag_us=cfg.get("max_lag_us", None),
+        # keep the best of the fit's starts; restart Nelder-Mead from it
+        fit_select_best=cfg.get("fit_select_best", False),
+        fit_restarts=cfg.get("fit_restarts", 0),
+        # below this range the clutter-subtracted ACF is fitted
+        clutter_cutoff_km=cfg.get("clutter_cutoff_km", 300),
     )
 
 

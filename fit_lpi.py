@@ -297,7 +297,9 @@ def fit_acf(acf,
             guess=n.array([n.nan,n.nan,n.nan,n.nan]),
             plot=False,
             use_optuna=False,
-            scaling_constant=1e4):
+            scaling_constant=1e4,
+            select_best=False,
+            restarts=0):
 
     if n.isnan(guess[0]):
         guess[0]=1.1
@@ -368,17 +370,30 @@ def fit_acf(acf,
             ssq=n.nansum(n.abs(model-acf)**2.0/std**2.0)
             return(ssq)
 
-        xhat=so.minimize(ss,guess,method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
+        xhat=so.minimize(ss,guess,method="Nelder-Mead",bounds=((0.99,ilf.te_ti_ratio1),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
         sb=ss(xhat)
         bx=xhat
         guess[2]=-1*guess[2]
-        xhat=so.minimize(ss,guess,method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
+        xhat=so.minimize(ss,guess,method="Nelder-Mead",bounds=((0.99,ilf.te_ti_ratio1),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
         st=ss(xhat)
         if st<sb:
             bx=xhat
-        xhat=so.minimize(ss,[1.1,500,100,1.05*zl_guess],method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
+            # without select_best the third start is compared with the first
+            # start's chi^2, not the best so far, and can replace a better second
+            if select_best:
+                sb=st
+        xhat=so.minimize(ss,[1.1,500,100,1.05*zl_guess],method="Nelder-Mead",bounds=((0.99,ilf.te_ti_ratio1),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
         st=ss(xhat)
         if st<sb:
+            bx=xhat
+        # Nelder-Mead can stop short of the minimum; restarting it from its
+        # own result with a fresh simplex continues the descent
+        for _ in range(restarts):
+            sb=ss(bx)
+            xhat=so.minimize(ss,bx,method="Nelder-Mead",bounds=((0.99,ilf.te_ti_ratio1),(150,3000),(-1500,1500),(0.3*zl_guess,3*zl_guess))).x
+            st=ss(xhat)
+            if not st<sb:
+                break
             bx=xhat
 
         xhat=bx
@@ -461,7 +476,8 @@ def fit_acf_ts(acf,
                var_scale=2.0,
                guess=n.array([n.nan,n.nan,n.nan,n.nan,n.nan]), # te/ti, ti, vi, zl, heavy_ion_frac
                plot=False,
-               scaling_constant=1e4):
+               scaling_constant=1e4,
+               select_best=False):
     """ 
     topside 
     """
@@ -502,15 +518,21 @@ def fit_acf_ts(acf,
     guess2=n.zeros(5)
     guess2[0:4]=guess
     guess2[4]=1e3
-    xhat=so.minimize(ss,guess2,method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
+    xhat=so.minimize(ss,guess2,method="Nelder-Mead",bounds=((0.99,ilf_ho.te_ti_ratio1),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
     sb=ss(xhat)
     bx=xhat
     guess[2]=-1*guess[2]
-    xhat=so.minimize(ss,guess2,method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
+    # guess2 is a copy made before the negation, so without select_best the
+    # second start repeats the first
+    if select_best:
+        guess2[2]=-1*guess2[2]
+    xhat=so.minimize(ss,guess2,method="Nelder-Mead",bounds=((0.99,ilf_ho.te_ti_ratio1),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
     st=ss(xhat)
     if st<sb:
         bx=xhat
-    xhat=so.minimize(ss,[1.1,1500,13,1.05*zl_guess,800],method="Nelder-Mead",bounds=((0.99,3),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
+        if select_best:
+            sb=st
+    xhat=so.minimize(ss,[1.1,1500,13,1.05*zl_guess,800],method="Nelder-Mead",bounds=((0.99,ilf_ho.te_ti_ratio1),(150,3000),(-1500,1500),(0.1*zl_guess,5*zl_guess),(2,10000))).x
     st=ss(xhat)
     if st<sb:
         bx=xhat
@@ -590,7 +612,7 @@ def fit_acf_ts(acf,
     return(xhat[0:4],model,sigmas,Sigma,ofrac)
 
 
-def range_average(acf, var, rgs, ra):
+def range_average(acf, var, rgs, ra, rho=None):
     """
     r^2 weighted mean of the ACF over the 2 ra + 1 gates centred on each gate
     (fewer at the ends of the range axis), and the variance of that mean.
@@ -602,6 +624,13 @@ def range_average(acf, var, rgs, ra):
     a 1/v weighted mean, which this is not). Where the centre gate has no data
     at a lag, empty or masked as space debris, the result is NaN: the window
     would only hold its neighbours, and the value would belong to another range.
+
+    rho: None treats the gates' errors as independent. A sequence
+    (rho_1, rho_2, ...) is the correlation between the errors of gates 1, 2,
+    ... apart, the same at every gate and lag, and adds the cross terms
+    2 sum_k rho_k sum_l w_l w_(l+k) sqrt(v_l v_(l+k)) to the variance (memos
+    31, 36: the inversion makes neighbouring gates anticorrelated, rho_1 =
+    -0.30, so the independent rule overstates the variance of the average).
     """
     if ra <= 0:
         return(n.copy(acf),n.copy(var))
@@ -609,6 +638,7 @@ def range_average(acf, var, rgs, ra):
     w=n.where(ok,(rgs**2.0)[:,None],0.0)
     a=n.where(ok,acf,0.0)
     v=n.where(ok,var,0.0)
+    s=w*n.sqrt(n.real(v))
     avg_acf=n.full(acf.shape,n.nan,dtype=acf.dtype)
     avg_var=n.full(var.shape,n.nan,dtype=var.dtype)
     n_rg=acf.shape[0]
@@ -618,6 +648,15 @@ def range_average(acf, var, rgs, ra):
             ws=n.sum(w[r0:r1,:],axis=0)
             avg_acf[ri,:]=n.sum(w[r0:r1,:]*a[r0:r1,:],axis=0)/ws
             avg_var[ri,:]=n.sum(w[r0:r1,:]**2.0*v[r0:r1,:],axis=0)/ws**2.0
+            if rho is not None:
+                sw=s[r0:r1,:]
+                cross=n.zeros(sw.shape[1])
+                for k,rk in enumerate(rho,start=1):
+                    if k < sw.shape[0]:
+                        cross+=2.0*rk*n.sum(sw[:-k,:]*sw[k:,:],axis=0)
+                # a non-positive variance would follow only from a rho that is
+                # not a valid correlation; keep at least 5 % of the independent value
+                avg_var[ri,:]=n.maximum(avg_var[ri,:]+cross/ws**2.0,0.05*avg_var[ri,:])
     avg_acf[~ok]=n.nan
     avg_var[~ok]=n.nan
     return(avg_acf,avg_var)
@@ -673,7 +712,23 @@ def fit_lpifiles(dirn="lpi_f",
                  # leave out gates whose ACF looks like a hard target: None
                  # (off), "absolute" or "significance"; see
                  # space_object_flagged
-                 space_object_cut=None):
+                 space_object_cut=None,
+                 # correlation (rho_1, rho_2, ...) between the errors of
+                 # neighbouring gates in the range average; None: independent.
+                 # see range_average
+                 range_avg_rho=None,
+                 # apply range_avg_rho only in the range_avg bands whose lower
+                 # limit (range_limits) is at least this height (km)
+                 range_avg_rho_min_km=0,
+                 # fit only the lags up to this many microseconds; None: all
+                 max_lag_us=None,
+                 # keep the best chi^2 of the fit's starts (fit_acf, fit_acf_ts)
+                 fit_select_best=False,
+                 # Nelder-Mead restarts from the best start (fit_acf)
+                 fit_restarts=0,
+                 # below this range (km) the fit uses the clutter-subtracted
+                 # ACF acfs_g/2, above it the plain acfs_e
+                 clutter_cutoff_km=300):
 
     if space_object_cut not in SPACE_OBJECT_CUTS:
         raise ValueError("space_object_cut must be one of %s, not %r"%(SPACE_OBJECT_CUTS,space_object_cut))
@@ -724,8 +779,9 @@ def fit_lpifiles(dirn="lpi_f",
     int_files=[[fl[i] for i in g] for g in group_by_time(ft0s,max_dt)]
         
     # above this, don't use ground clutter removal
-    # use removal below this range
-    rg_clutter_rem_cutoff=n.where(rgs>300)[0][0]
+    # use removal below this range. the clutter-subtracted ACF has about twice
+    # the variance of the plain one, and acfs_var is the plain one's
+    rg_clutter_rem_cutoff=n.where(rgs>clutter_cutoff_km)[0][0]
 
     n_rg=len(rgs)
     n_l=len(lag)
@@ -881,7 +937,10 @@ def fit_lpifiles(dirn="lpi_f",
             var_orig=n.copy(var)
             for rai,ra in enumerate(range_avg):
                 # ra gates either side, 2 ra + 1 in all as range_avg_window_km states
-                avg_acf,avg_var=range_average(acf_orig,var_orig,rgs,ra)
+                # the correlation is the inversion's noise-only one (memo 36),
+                # so it can be limited to the bands where noise dominates
+                use_rho=range_avg_rho if range_limits[rai] >= range_avg_rho_min_km else None
+                avg_acf,avg_var=range_average(acf_orig,var_orig,rgs,ra,rho=use_rho)
                 acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_acf[range_limit_idx[rai]:range_limit_idx[rai+1],:]
                 var[range_limit_idx[rai]:range_limit_idx[rai+1],:]=avg_var[range_limit_idx[rai]:range_limit_idx[rai+1],:]
         
@@ -908,6 +967,8 @@ def fit_lpifiles(dirn="lpi_f",
         model_acfs[:,:]=n.nan
         
         n_lags=acf.shape[1]
+        if max_lag_us is not None:
+            n_lags=int(n.sum(lag <= max_lag_us*1e-6*(1+1e-9)))
         guess=n.array([n.nan,n.nan,n.nan,n.nan])
         #        print("tx power %1.2f MW"%(zpm(0.5*(t0+t1))/1e6))
 
@@ -926,10 +987,10 @@ def fit_lpifiles(dirn="lpi_f",
             try:
                 if (n.sum(n.isnan(acf[ri,first_lag:n_lags]))/(n_lags-first_lag) < 0.8):
                     if hgt>700:
-                        res,model_acf,dres,cov,o_frac=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
+                        res,model_acf,dres,cov,o_frac=fit_acf_ts(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant,select_best=fit_select_best)
                     else:
                         o_frac=n.nan
-                        res,model_acf,dres,cov=fit_acf(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant)
+                        res,model_acf,dres,cov=fit_acf(acf[ri,first_lag:n_lags],lag[first_lag:n_lags],hgt,var[ri,first_lag:n_lags],guess=guess,plot=plot ,scaling_constant=scaling_constant,select_best=fit_select_best,restarts=fit_restarts)
                         
                     model_acfs[ri,first_lag:n_lags]=model_acf/model_acf[0].real
                     guess=res
@@ -1047,6 +1108,21 @@ def fit_lpifiles(dirn="lpi_f",
 
         ho["range_avg_limits_km"]=range_limits
         ho["range_avg_window_km"]=(rgs[1]-rgs[0])*(2*range_avg+1)
+        # the optional settings are stored only when used, so that default
+        # outputs stay as they were
+        if range_avg_rho is not None:
+            ho["range_avg_rho"]=n.array(range_avg_rho,dtype=float)
+            ho["range_avg_rho_min_km"]=range_avg_rho_min_km
+        if max_lag_us is not None:
+            ho["max_lag_us"]=max_lag_us
+        if fit_select_best:
+            ho["fit_select_best"]=True
+        if fit_restarts:
+            ho["fit_restarts"]=fit_restarts
+        if clutter_cutoff_km != 300:
+            ho["clutter_cutoff_km"]=clutter_cutoff_km
+        if ilf.te_ti_ratio1 != 3.0:
+            ho["te_ti_max"]=ilf.te_ti_ratio1
         
 
         ho["T_sys"]=tsys

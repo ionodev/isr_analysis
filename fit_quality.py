@@ -8,7 +8,8 @@ load_fits() reads the fit_lpi output (pp-*.h5) of a directory into arrays
 marks each fitted gate:
 
     FAILED    a parameter or its uncertainty is not finite
-    BOUND     the fit ends at a limit of its search: Te/Ti at 0.99 or 3,
+    BOUND     the fit ends at a limit of its search: Te/Ti at 0.99 or 3 (or
+              the edge of a wider table, te_ti_max of the fit files),
               Ti at 150 or 3000 K, |vi| at 1500 m/s (fit_lpi's bounds)
     NOISY     dne/ne or dTe/Te above 0.5
     SATELLITE a catalogued echo of at least 20 dB within one gate of it
@@ -57,7 +58,9 @@ def load_fits(d, t_range=None, constant=DENSITY_CONSTANT):
             rows.append(dict(t0=float(h["t0"][()]), t1=float(h["t1"][()]), r=h["rgs"][()],
                              ne=h["ne"][()] * constant, dne=h["dne"][()] * constant,
                              Te=h["Te"][()], dTe=h["dTe"][()], Ti=h["Ti"][()], dTi=h["dTi"][()],
-                             vi=h["vi"][()], dvi=h["dvi"][()]))
+                             vi=h["vi"][()], dvi=h["dvi"][()],
+                             # the table's upper Te/Ti, stored by fit_lpi when it is not 3
+                             te_ti_max=float(h["te_ti_max"][()]) if "te_ti_max" in h else 3.0))
     if not rows:
         return None
     out = {k: n.array([x[k] for x in rows]) for k in rows[0] if k != "r"}
@@ -100,7 +103,11 @@ def flags(F, echoes=None, min_snr_db=20.0, columns=None, threshold=RESIDUAL_THRE
     f[bad] |= FAILED
     with n.errstate(invalid="ignore", divide="ignore"):
         ratio = F["Te"] / F["Ti"]
-        bound = (ratio <= 0.995) | (ratio >= 2.98) | (F["Ti"] <= 151) | (F["Ti"] >= 2990) \
+        # the upper Te/Ti bound is the table's edge: 3, or that of a wider table
+        top = n.asarray(F.get("te_ti_max", 3.0), dtype=float)
+        top = top[:, None] if top.ndim == 1 else top
+        top = n.where(top == 3.0, 2.98, top - 0.02)
+        bound = (ratio <= 0.995) | (ratio >= top) | (F["Ti"] <= 151) | (F["Ti"] >= 2990) \
             | (n.abs(F["vi"]) >= 1490)
         noisy = (n.abs(F["dne"] / F["ne"]) > 0.5) | (n.abs(F["dTe"] / F["Te"]) > 0.5)
     f[bound & ~bad] |= BOUND
