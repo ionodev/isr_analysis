@@ -68,3 +68,18 @@ def test_missing_gate_drops_out():
     s = w * np.sqrt(var[3:5, 0])
     expect = (np.sum(w**2 * var[3:5, 0]) + 2 * -0.3 * s[0] * s[1]) / np.sum(w)**2
     assert np.isclose(v[3, 0], expect)
+
+
+def test_weights_width_leave_one_out():
+    # impulse_rows.masked_running_sigma with a longer window (outlier_lpi's
+    # weights_width): each row's level is the mean of |m|^2 over the window
+    # around it, wrapping around the period, without the row itself
+    import impulse_rows as improws
+    rng = np.random.default_rng(3)
+    p = rng.exponential(size=(200, 4))
+    for width in (10, 30, 100):
+        s = improws.masked_running_sigma(p, np.ones(p.shape, bool), width, exclude_self=True)
+        for r in (0, 57, 199):
+            idx = [(r + k) % 200 for k in range(width // 2 - width + 1, width // 2 + 1) if k != 0]
+            assert len(idx) == width - 1
+            np.testing.assert_allclose(s[r], np.sqrt(p[idx].mean(axis=0)), rtol=1e-9)

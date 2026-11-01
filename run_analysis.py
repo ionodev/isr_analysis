@@ -133,6 +133,8 @@ def run_lpi(datadir, output_base, cfg, max_time_s=None):
         impulse_rows=cfg.get("impulse_rows", False),
         # variance weights without the row's own |m|^2 (Memo 51)
         weights_exclude_self=cfg.get("weights_exclude_self", False),
+        # pulses in the running mean of the variance weights
+        weights_width=cfg.get("weights_width", 10),
         # the satellite stage, and the periods to analyse (None for all)
         satellite_detections=satellite_detections(datadir, cfg),
         periods=cfg.get("periods", None),

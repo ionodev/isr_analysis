@@ -413,6 +413,12 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # estimated from the row itself, which grows when rows are
               # removed (Memo 51). False leaves the weights as they were.
               weights_exclude_self=False,
+              # the number of pulses in the running mean of |m|^2 that gives
+              # the variance weights. A longer window gives less noisy
+              # weights (with the row left out, noise in the weights costs
+              # precision, not bias) but follows a changing background more
+              # slowly. 10 leaves the weights as they were.
+              weights_width=10,
               ):
     if weighting not in WEIGHTINGS:
         raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
@@ -975,20 +981,20 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     # (~1e-7 of the largest value) swamps every pulse's weight
                     # in the rows a bright echo reaches, clean pulses included
                     localized_sigma=localized_sigma.astype(n.float64)
-                wf=n.repeat(1/10,10)
+                wf=n.repeat(1/weights_width,weights_width)
                 WF=fft(wf,localized_sigma.shape[0])
                 if impulse_rows:
                     # the rows an impulse touches, removed below; the running
                     # mean of the weights is taken over the other rows
                     hit=n.array(hits[li],dtype=bool).reshape(n_ipp,n_meas)
-                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,10,exclude_self=weights_exclude_self)
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,weights_width,exclude_self=weights_exclude_self)
                     imp_removed[li]=n.mean(hit)
                 elif weights_exclude_self:
-                    localized_sigma=improws.masked_running_sigma(localized_sigma,n.ones(localized_sigma.shape,dtype=bool),10,exclude_self=True)
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,n.ones(localized_sigma.shape,dtype=bool),weights_width,exclude_self=True)
                 else:
                     for ri in range(mm_em.shape[1]):
                         # we need to wrap around, to avoid too low values.
-                        localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-5)
+                        localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-(weights_width//2))
 
                 # make sure we don't have a division by zero
                 msig=n.nanmedian(localized_sigma)
@@ -1284,6 +1290,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["background_column"]=False
             if weights_exclude_self:
                 ho["weights_exclude_self"]=True
+            if weights_width!=10:
+                ho["weights_width"]=weights_width
             if impulse_rows:
                 # the rows removed for impulses: per lag, the fraction of the
                 # period's rows; the fraction of the echo-window samples found
