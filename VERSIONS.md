@@ -17,15 +17,21 @@ product versions.
 | **v3** | v2's inversions refitted: one fit per zenith cycle, the plain ACF above 150 km, 63-km range windows from 230 km, correlated-gate errors from 300 km, a finer table to Te/Ti 5 (candidate; Henrik decides) | 54 | 407b40b (weeks-10-12) | `v3_2026-11/runs/v3_040{7,8}` | `isr-v3-v1` |
 | v3-60s | v3 with 60-s fits, for the eclipse | 54 | as v3 | `v3_2026-11/runs/v3_60s_040{7,8}` | `isr-v3-60s-v1` |
 | v3-loo | v3's refit of v2-loo's inversions (leave-one-out weights); 60-s variant `v3-loo-60s` | 54 | as v3 | `v3_2026-11/runs/v3_loo{,_60s}_040{7,8}` | `isr-v3-loo-v1`, `isr-v3-loo-60s-v1` |
-| v3-loo100 | leave-one-out weights over 100 pulses (`weights_width` 100), LPI rerun, v3's fit; 60-s variant `v3-loo100-60s` | 54 | b671886 (weeks-10-12) | `v3_2026-11/runs/v3_loo100{,_60s}_040{7,8}` | `isr-v3-loo100-v1`, `isr-v3-loo100-60s-v1` |
+| v3-loo100 | leave-one-out weights over 100 pulses (`weights_width` 100), LPI rerun, v3's fit; 60-s variant `v3-loo100-60s` | 54 | b671886 (weeks-10-12) | `v3_2026-11/runs/v3_loo100{,_60s}_040{7,8}` | `isr-v3-loo100-v1`, `isr-v3-loo100-60s-v1`; `-v2` (per-day constants) superseded |
+| **v3-loo100c20** | + the row cap (`weights_row_cap` 20: a row's variance at least its own \|m\|^2 / 20), LPI rerun, v3's fit; 60-s variant `v3-loo100c20-60s` for the eclipse; **the final product of 2 November** | 52, 54 | 3b52817, constants a2e8a53 (weeks-10-12) | `v3_2026-11/runs/v3_loo100c20{,_60s}_040{7,8}` | `isr-v3-loo100c20-v2`, `isr-v3-loo100c20-60s-v2` (per-day constants; `-v1` carry 7.15e8) |
 
 The `-v1` / `-v2` at the end of an export's name (`isr-v2rfi-v2`) is the
 export's own revision (v2 exports carry the quality flags), not the
 pipeline version.
 
-All versions use `fit_quality.DENSITY_CONSTANT` = 7.15e8 (the digisonde,
-Memo 43) unless their memo says otherwise; Memo 53 measured the plasma-line
-constant of v2 (7.63e8) and v2-loo (6.52e8).
+Versions up to v3-loo100 used `fit_quality.DENSITY_CONSTANT` = 7.15e8 (the
+digisonde, Memo 43) unless their memo says otherwise; Memo 53 measured the
+plasma-line constant of v2 (7.63e8) and v2-loo (6.52e8). Since a2e8a53
+`fit_quality` carries the final product's constants from the plasma lines,
+one per day: 5.95e8 (7 April), 6.36e8 (8 April), 6.24e8 for other days
+(`DENSITY_CONSTANT_BY_DAY`, `DENSITY_CONSTANT`; Memo 54). Older runs read
+through `fit_quality.load_fits` now get these too; pass `constant=` for
+their own.
 
 ## v3: how it is optimised
 
@@ -52,7 +58,19 @@ densities 1e11 and 1e12 only, the one the fit reads) is made by
 not, is in Memo 54's Table 1. Tried and not kept: `fit_select_best`,
 `fit_restarts`, `max_lag_us` (switches left in, off by default).
 
-Open (Henrik): the weights. With the plain ACF above 150 km, v3 with
+Decided (Henrik, 2 November; Memo 54's last addition): the final product
+is v3 with leave-one-out weights over 100 pulses, one fit per zenith cycle
+and the 60-s variant for the eclipse, the 27-km bottomside window below
+230 km, the wide table, per-day density constants. The eclipse rerun on
+v3-loo100 showed implausible good gates at 11-13 UT on 8 April (single
+pulses with interference keep full weight when the row is left out), so
+Henrik chose a row cap (option A): `weights_row_cap` 20, the smallest cap
+whose clean Monte Carlo bias stays within 0.5 % (`weight_bias_mc.py`).
+v3-loo100c20 has v3's retention, precision and robustness and
+leave-one-out's absence of bias; on 8 April it is at least as good as
+Madrigal in every measure. Memo 52 is redone on its 60-s fits.
+
+Before the decision: the weights. With the plain ACF above 150 km, v3 with
 variance weights carries their SNR-dependent bias at the F peak (its density
 scale drifts, impulse removal biases n_e by -4.5 %); v3-loo is unbiased but
 loses cells at low SNR. Density constants from the plasma lines: v3
