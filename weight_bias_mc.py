@@ -62,6 +62,34 @@ def main(pulses=2000, columns=200, width=10, seed=1):
                 out.append(n.mean(((w * m).sum(0) / w.sum(0)).real) / (snr * rho) - 1)
             print("%10.1f  %4.1f  %+19.3f  %+19.3f" % (snr, rho, out[0], out[1]))
 
+    # the final product's weights (Memo 54): leave-one-out over 100 pulses,
+    # with and without the row cap of 20 (impulse_rows.row_cap), against the
+    # variance weights over 10; clean, and with interference of random phase
+    # on 1 % of the rows at 30 times the noise amplitude (bias, and the
+    # scatter of the column estimates over that of the clean leave-one-out)
+    print("\nlagged products, rho 0.6: plasma SNR, interference  bias: variance 10 | loo 100 | loo 100 + cap 20"
+          "   scatter / clean loo 100: same order")
+    for snr in (0.03, 0.3, 3.0):
+        a = cg((pulses, columns))
+        b = 0.6 * a + 0.8 * cg((pulses, columns))
+        clean = (n.sqrt(snr) * a + cg(a.shape)) * n.conj(n.sqrt(snr) * b + cg(a.shape))
+        hit = rng.uniform(size=clean.shape) < 0.01
+        bad = clean + hit * 30 * (1 + snr) * n.exp(2j * n.pi * rng.uniform(size=clean.shape))
+        keep = n.ones(clean.shape, dtype=bool)
+        ref = None
+        for tag, m in (("clean", clean), ("1 %", bad)):
+            p = n.abs(m) ** 2
+            ests = []
+            for wid, ex, cap in ((10, False, None), (100, True, None), (100, True, 20.0)):
+                s = ir.masked_running_sigma(p, keep, wid, exclude_self=ex)
+                if cap is not None:
+                    s = ir.row_cap(s, p, cap)
+                w = 1 / s ** 2
+                ests.append(((w * m).sum(0) / w.sum(0)).real / (snr * 0.6))
+            ref = n.std(ests[1]) if ref is None else ref
+            print("%10.2f  %5s  %+8.3f %+8.3f %+8.3f   %6.2f %6.2f %6.2f" % (
+                snr, tag, *[n.mean(e) - 1 for e in ests], *[n.std(e) / ref for e in ests]))
+
 
 if __name__ == "__main__":
     main()

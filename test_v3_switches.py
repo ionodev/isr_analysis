@@ -101,3 +101,23 @@ def test_density_constant_by_day(tmp_path):
     F = fq.load_fits(str(tmp_path))
     np.testing.assert_array_equal(F["ne"][:, 0], [5.90e8, 6.32e8, fq.DENSITY_CONSTANT])
     np.testing.assert_array_equal(fq.load_fits(str(tmp_path), constant=1.0)["ne"][:, 0], [1.0, 1.0, 1.0])
+
+
+def test_row_cap():
+    import impulse_rows as ir
+
+    rng = np.random.default_rng(3)
+    z = lambda s: (rng.standard_normal(s) + 1j * rng.standard_normal(s)) / np.sqrt(2)
+    m = z((2000, 50)) * np.conj(z((2000, 50)))
+    p = np.abs(m) ** 2
+    m[100, 7] *= 30.0                        # one row with interference
+    p[100, 7] = np.abs(m[100, 7]) ** 2
+    s = ir.masked_running_sigma(p, np.ones(p.shape, bool), 100, exclude_self=True)
+    c = ir.row_cap(s, p, 20.0)
+    # the interfered row: its own power over the cap
+    np.testing.assert_allclose(c[100, 7], np.sqrt(p[100, 7] / 20.0))
+    # clean rows: unchanged except the few above twenty times their level
+    changed = (c != s)
+    changed[100, 7] = False
+    assert changed.mean() < 0.003
+    assert np.all(c >= s)

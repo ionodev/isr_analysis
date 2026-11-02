@@ -129,3 +129,24 @@ def masked_running_sigma(p, keep, width=10, exclude_self=False):
     # den is a multiple of 1/width; below half of that no row was kept
     m = n.where(den > 0.5 / width, num / n.maximum(den, 1e-300), plain)
     return n.roll(n.sqrt(n.maximum(m, 0.0)), -(width // 2), axis=0)
+
+
+def row_cap(sigma, p, cap):
+    """
+    The leave-one-out weights with a cap on each row's own power: a row's
+    noise level is at least sqrt(|m|^2 / cap), sigma its level from the
+    other pulses (masked_running_sigma, exclude_self) and p its own |m|^2.
+
+    Leaving the row out makes the weights unbiased but also gives full weight
+    to a row whose own power is far above its neighbours': interference on
+    one or a few pulses (an impulse below the detection threshold, what is
+    left of a satellite echo). The variance weights, which include the row,
+    weight such a row down to about width / |m|^2. The cap restores that for
+    those rows only. A clean row reaches the cap only in the tail of |m|^2
+    (the product of two exponentials for noise), and those rows lean along
+    the signal, so the cap costs some bias: in weight_bias_mc.py about -2 %
+    at cap 10, within 0.4 % at cap 20 (lagged products of correlation 0.6 to
+    0.98, SNR 0.3 to 30), against -20 to -25 % for the variance weights.
+    The final product uses 20, the smallest cap within 0.5 % (Memo 54).
+    """
+    return n.fmax(sigma, n.sqrt(n.maximum(p, 0.0) / cap))

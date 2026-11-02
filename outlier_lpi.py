@@ -419,6 +419,13 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # precision, not bias) but follows a changing background more
               # slowly. 10 leaves the weights as they were.
               weights_width=10,
+              # with leave-one-out weights: a row's variance is at least its
+              # own |m|^2 divided by this (impulse_rows.row_cap), so a row
+              # carrying interference far above its neighbours' level is
+              # weighted down, as the variance weights did through the row's
+              # own term; a clean row almost never reaches it. None leaves
+              # the weights as they were.
+              weights_row_cap=None,
               ):
     if weighting not in WEIGHTINGS:
         raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
@@ -983,6 +990,7 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     localized_sigma=localized_sigma.astype(n.float64)
                 wf=n.repeat(1/weights_width,weights_width)
                 WF=fft(wf,localized_sigma.shape[0])
+                p_self=localized_sigma.copy() if weights_row_cap is not None else None
                 if impulse_rows:
                     # the rows an impulse touches, removed below; the running
                     # mean of the weights is taken over the other rows
@@ -995,6 +1003,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     for ri in range(mm_em.shape[1]):
                         # we need to wrap around, to avoid too low values.
                         localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-(weights_width//2))
+                if weights_row_cap is not None:
+                    localized_sigma=improws.row_cap(localized_sigma,p_self,weights_row_cap)
 
                 # make sure we don't have a division by zero
                 msig=n.nanmedian(localized_sigma)
@@ -1292,6 +1302,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["weights_exclude_self"]=True
             if weights_width!=10:
                 ho["weights_width"]=weights_width
+            if weights_row_cap is not None:
+                ho["weights_row_cap"]=weights_row_cap
             if impulse_rows:
                 # the rows removed for impulses: per lag, the fraction of the
                 # period's rows; the fraction of the echo-window samples found
