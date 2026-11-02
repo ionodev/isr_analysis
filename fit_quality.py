@@ -34,15 +34,17 @@ import h5py
 import numpy as n
 
 # n_e = constant x the fit's relative density. The constants of the final
-# product (v3 with leave-one-out weights over 100 pulses; Memo 54, decided
-# by Henrik on 2 November 2026), from the plasma lines (Memo 53's method),
-# one per day: the plasma lines and the digisonde (5.81 and 6.26e8) see the
-# same offset between the days, which within each day follows neither the
-# transmit power nor the receiver gain, so a single constant would carry it
-# into the eclipse-to-control comparison. Other days get both days'
-# constant. (Before: 7.15e8 from the digisonde for every day, Memo 43.)
-DENSITY_CONSTANT = 6.20e8          # Memo 54: plasma lines, both days
-DENSITY_CONSTANT_BY_DAY = {"2024-04-07": 5.90e8, "2024-04-08": 6.32e8}
+# product (v3 with leave-one-out weights over 100 pulses and the row cap of
+# 20, v3-loo100c20; Memo 54, decided by Henrik on 2 November 2026), from the
+# plasma lines of its 60-s fits (Memo 53's method), one per day: the plasma
+# lines and the digisonde (5.85 and 6.33e8) see the same offset between the
+# days, which within each day follows neither the transmit power nor the
+# receiver gain, so a single constant would carry it into the
+# eclipse-to-control comparison. Other days get both days' constant.
+# (Before: 7.15e8 from the digisonde for every day, Memo 43; 5.90, 6.32 and
+# 6.20e8 for v3-loo100 without the cap.)
+DENSITY_CONSTANT = 6.24e8          # Memo 54: plasma lines, both days
+DENSITY_CONSTANT_BY_DAY = {"2024-04-07": 5.95e8, "2024-04-08": 6.36e8}
 T0_RECORDING = 1712484000          # the first period of the eclipse2024 recording
 PERIOD_S = 10
 

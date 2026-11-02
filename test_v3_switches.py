@@ -99,7 +99,7 @@ def test_density_constant_by_day(tmp_path):
             for k in ("ne", "dne", "Te", "dTe", "Ti", "dTi", "vi", "dvi"):
                 h[k] = np.array([1.0])
     F = fq.load_fits(str(tmp_path))
-    np.testing.assert_array_equal(F["ne"][:, 0], [5.90e8, 6.32e8, fq.DENSITY_CONSTANT])
+    np.testing.assert_array_equal(F["ne"][:, 0], [5.95e8, 6.36e8, fq.DENSITY_CONSTANT])
     np.testing.assert_array_equal(fq.load_fits(str(tmp_path), constant=1.0)["ne"][:, 0], [1.0, 1.0, 1.0])
 
 
