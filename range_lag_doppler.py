@@ -75,11 +75,11 @@ def main():
         with n.errstate(invalid="ignore", divide="ignore"):
             norm = (a / zero_lag(a)[:, None]).real
         m = ax[0, col].pcolormesh(lag * 1e6, rgs[g], norm[g], vmin=-0.3, vmax=1.0, cmap="viridis", shading="nearest")
-        fig.colorbar(m, ax=ax[0, col], label="ACF / zero-lag power (real part)")
+        fig.colorbar(m, ax=ax[0, col], label="Re ACF / zero-lag power")
         ax[0, col].set_title("range-lag, %s" % labels[col])
         ax[0, col].set_xlabel("lag ($\\mu$s)")
         m = ax[1, col].pcolormesh(f / 1e3, rgs[g], S[col], vmin=vmax - 25, vmax=vmax, cmap="inferno", shading="nearest")
-        fig.colorbar(m, ax=ax[1, col], label="power spectral density $\\times (r/300\\,\\mathrm{km})^2$ (dB)")
+        fig.colorbar(m, ax=ax[1, col], label="PSD $\\times (r/300\\,\\mathrm{km})^2$ (dB)")
         ax[1, col].set_title("range-Doppler, %s" % labels[col])
         ax[1, col].set_xlabel("Doppler frequency (kHz)")
     for a in ax[:, 0]:
