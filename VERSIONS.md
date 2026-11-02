@@ -17,6 +17,7 @@ product versions.
 | **v3** | v2's inversions refitted: one fit per zenith cycle, the plain ACF above 150 km, 63-km range windows from 230 km, correlated-gate errors from 300 km, a finer table to Te/Ti 5 (candidate; Henrik decides) | 54 | 407b40b (weeks-10-12) | `v3_2026-11/runs/v3_040{7,8}` | `isr-v3-v1` |
 | v3-60s | v3 with 60-s fits, for the eclipse | 54 | as v3 | `v3_2026-11/runs/v3_60s_040{7,8}` | `isr-v3-60s-v1` |
 | v3-loo | v3's refit of v2-loo's inversions (leave-one-out weights); 60-s variant `v3-loo-60s` | 54 | as v3 | `v3_2026-11/runs/v3_loo{,_60s}_040{7,8}` | `isr-v3-loo-v1`, `isr-v3-loo-60s-v1` |
+| v3-loo100 | leave-one-out weights over 100 pulses (`weights_width` 100), LPI rerun, v3's fit; 60-s variant `v3-loo100-60s` | 54 | b671886 (weeks-10-12) | `v3_2026-11/runs/v3_loo100{,_60s}_040{7,8}` | `isr-v3-loo100-v1`, `isr-v3-loo100-60s-v1` |
 
 The `-v1` / `-v2` at the end of an export's name (`isr-v2rfi-v2`) is the
 export's own revision (v2 exports carry the quality flags), not the
@@ -55,4 +56,7 @@ Open (Henrik): the weights. With the plain ACF above 150 km, v3 with
 variance weights carries their SNR-dependent bias at the F peak (its density
 scale drifts, impulse removal biases n_e by -4.5 %); v3-loo is unbiased but
 loses cells at low SNR. Density constants from the plasma lines: v3
-7.95e8, v3-loo 6.18e8 (the exports carry 7.15e8).
+7.95e8, v3-loo 6.18e8, v3-loo100 6.20e8 (the exports carry 7.15e8).
+Leave-one-out over 100 pulses instead of 9 (2 November) stays unbiased but
+recovers neither precision nor low-SNR retention: the gap is the variance
+weights' shrinkage, not the leave-one-out weights' noise (Memo 54).
