@@ -83,3 +83,21 @@ def test_weights_width_leave_one_out():
             idx = [(r + k) % 200 for k in range(width // 2 - width + 1, width // 2 + 1) if k != 0]
             assert len(idx) == width - 1
             np.testing.assert_allclose(s[r], np.sqrt(p[idx].mean(axis=0)), rtol=1e-9)
+
+
+def test_density_constant_by_day(tmp_path):
+    import h5py
+
+    import fit_quality as fq
+
+    d = tmp_path / "lpi_60" / "zenith-l"
+    d.mkdir(parents=True)
+    # 7 April 12 UTC, 8 April 12 UTC, 9 April 12 UTC (no constant of its own)
+    for t in (1712491200, 1712577600, 1712664000):
+        with h5py.File(d / ("pp-%d.h5" % t), "w") as h:
+            h["t0"], h["t1"], h["rgs"] = float(t), float(t + 60), np.array([300.0])
+            for k in ("ne", "dne", "Te", "dTe", "Ti", "dTi", "vi", "dvi"):
+                h[k] = np.array([1.0])
+    F = fq.load_fits(str(tmp_path))
+    np.testing.assert_array_equal(F["ne"][:, 0], [5.90e8, 6.32e8, fq.DENSITY_CONSTANT])
+    np.testing.assert_array_equal(fq.load_fits(str(tmp_path), constant=1.0)["ne"][:, 0], [1.0, 1.0, 1.0])
