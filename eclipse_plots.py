@@ -124,8 +124,8 @@ def main():
         panel(ax[1], tg, redges, clean("Te"), day0, "inferno", 500, 3500, "$T_e$ (K)", overlay=gb, hatch=gs)
         panel(ax[2], tg, redges, clean("Ti"), day0, "inferno", 500, 2000, "$T_i$ (K)", overlay=gb, hatch=gs)
         panel(ax[3], tg, redges, clean("vi"), day0, "RdBu_r", -150, 150, "$v_i$ (m/s, positive away)", overlay=gb, hatch=gs)
-        ax[0].set_title(title + "
-grey = flagged (failed, fit limit, noisy); dots = catalogued satellite echo; dashed = eclipse", fontsize=10)
+        ax[0].set_title(title + "\ngrey = flagged (failed, fit limit, noisy); dots = catalogued satellite echo; dashed = eclipse",
+                        fontsize=10)
     ax[-1].set_xlabel("hours (UTC)")
     fig.tight_layout()
     fig.savefig(prefix + ("_params_raw.png" if raw else "_params.png"), dpi=110)
