@@ -32,8 +32,14 @@ t is z(t) z*(t+tau), so it is touched when t or t+tau is. A row is the sum
 of the products of `rg` consecutive t (simple_decimator), and it is removed
 when any of them is touched. The clutter-subtracted products use the
 difference of two pulses of the same code, so the impulses of both pulses
-count; as the plain and the clutter-subtracted products share one design
-matrix and one solve, a row is removed from both.
+count. The plain (single-pulse) products contain only the pulse's own
+samples, so the partner's impulses do not touch them: each kind of product
+gets its own removal mask (touched_masks), and where the masks differ the
+inversion is solved once for each (outlier_lpi). Before 22 November 2026
+one mask, the union, served both, which removed from the plain products,
+which fit_lpi uses above clutter_cutoff_km, the rows hit only by the
+partner's impulses: for independent impulses in the two pulses about twice
+the rows needed.
 """
 
 import numpy as n
@@ -79,6 +85,24 @@ def widen(hot, filter_len):
         return n.zeros(len(hot), dtype=bool)
     c = n.convolve(hot.astype(n.int64), n.ones(2 * L, dtype=n.int64))
     return c[L:L + len(hot)] > 0
+
+
+def touched_masks(hot, hot_partner, filter_len):
+    """
+    The filtered samples whose lagged products must be removed, for the two
+    kinds of product: (touched_e, touched_g).
+
+    touched_e, for the plain lagged products z(t) z*(t+tau) of this pulse
+    alone: the samples its own impulses reach (widen). touched_g, for the
+    clutter-subtracted products of the difference of this pulse and its
+    partner (the other pulse of the same code, hot_partner; None when there
+    is none): the samples the impulses of either pulse reach, since the
+    difference carries both. Without a partner the two are the same array.
+    """
+    te = widen(hot, filter_len)
+    if hot_partner is None:
+        return te, te
+    return te, widen(hot | hot_partner, filter_len)
 
 
 def hit_rows(touched, lag, decim, m0, m1):

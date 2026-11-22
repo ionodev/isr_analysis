@@ -856,6 +856,15 @@ def fit_lpifiles(dirn="lpi_f",
             #a[0:rg_clutter_rem_cutoff,:]=a_g[0:rg_clutter_rem_cutoff,:]
             
             v=h["acfs_var"][()]
+            if "acfs_var_g" in h:
+                # the clutter subtracted products had their own solve (impulse
+                # rows removed with a different mask than the plain ones), so
+                # the gates taken from acfs_g take its variance
+                vg=h["acfs_var_g"][()]
+                if gc_cancel_all_ranges:
+                    v=vg
+                else:
+                    v[0:rg_clutter_rem_cutoff,:]=vg[0:rg_clutter_rem_cutoff,:]
             tsys+=h["T_sys"][()]            
 
             debris=n.zeros(n_rg,dtype=bool)

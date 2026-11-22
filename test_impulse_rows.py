@@ -149,3 +149,61 @@ def test_running_sigma_exclude_self():
     a = ir.masked_running_sigma(p, keep, 10)
     b = ir.masked_running_sigma(p, keep, 10, exclude_self=False)
     assert n.array_equal(a, b)
+
+
+def diff_rows(z, z1, lpf, decim, lag):
+    """The clutter-subtracted lagged products of a pulse and its partner in
+    rows, as lpi_files forms them from the difference of the filtered pulses."""
+    a, b = (n.array(x, dtype=n.complex64) for x in (z, z1))
+    for x in (a, b):
+        x[0:GC] = 0.0
+        x[LAST:] = 0.0
+    zd = lpf.lpf(a) - lpf.lpf(b)
+    zd[0:GC] = n.nan
+    zd[LAST:] = n.nan
+    return decim.decimate(zd[0:N - lag] * n.conj(zd[lag:N]))[M0:M1]
+
+
+def test_touched_masks_without_partner_is_one_mask():
+    hot = n.zeros(N, dtype=bool)
+    hot[3000] = True
+    te, tg = ir.touched_masks(hot, None, L)
+    assert te is tg
+    assert (te == ir.widen(hot, L)).all()
+
+
+def test_partner_impulses_touch_only_the_differenced_products():
+    # an impulse in the partner only: the plain products of the pulse keep
+    # every row (they do not contain the partner's samples), the differenced
+    # products lose the rows the impulse reaches, and every row the
+    # differenced mask keeps is free of it
+    rng = n.random.default_rng(5)
+    lpf = fft_lpf(N, f0=1.2e5, L=L)
+    decim = simple_decimator(L=N, dec=RG)
+    z, z1 = noise(rng, N), noise(rng, N)
+    z1i = z1.copy()
+    z1i[5000] += 30.0
+    zi = z.copy()
+    zi[3000] += 30.0
+    hot, hot1 = ir.detect(zi, GC, LAST), ir.detect(z1i, GC, LAST)
+    te, tg = ir.touched_masks(hot, hot1, L)
+    assert (te == ir.widen(hot, L)).all()
+    assert (tg == (ir.widen(hot, L) | ir.widen(hot1, L))).all()
+    for lag in (10, 100, 450):
+        he = ir.hit_rows(te, lag, decim, M0, M1)
+        hg = ir.hit_rows(tg, lag, decim, M0, M1)
+        assert not (he & ~hg).any()                  # the plain mask is inside the union
+        only_partner = hg & ~he
+        assert only_partner.any()
+        # plain products: the partner's impulse changes nothing, so the rows
+        # only it hits are clean and need not be removed
+        pe = rows(zi, lpf, decim, lag)
+        scale = n.nanmedian(n.abs(rows(z, lpf, decim, lag)))
+        ok = ~he & n.isfinite(pe)
+        assert n.max(n.abs(pe[ok] - rows(z, lpf, decim, lag)[ok])) < 1e-3 * scale
+        # differenced products: the partner's impulse is in the rows only it
+        # hits, and absent from the rows the union mask keeps
+        dg, dclean = diff_rows(zi, z1i, lpf, decim, lag), diff_rows(z, z1, lpf, decim, lag)
+        assert (n.abs(dg - dclean)[only_partner] > 1e-3 * scale).any()
+        okg = ~hg & n.isfinite(dg)
+        assert n.max(n.abs(dg[okg] - dclean[okg])) < 1e-3 * scale
