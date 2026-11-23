@@ -23,6 +23,18 @@ conflict here; resolve by keeping all the entries.
 
 ## Waiting for gate B (on branches, not merged)
 
+### Fixed
+Branch `clutfix-impulse-rows`, record `review/records/2026-11-22-clutfix-impulse-rows.md`, memo 55.
+- **The impulse-row removal no longer removes the clutter partner's rows from
+  the plain lagged products.** The plain products (`acfs_e`, fitted above
+  `clutter_cutoff_km`, 150 km in product-v3) lose only the rows of the pulse's
+  own impulses; the clutter-subtracted ones (`acfs_g`) still lose those of the
+  pulse and its partner. Where the masks differ each gets its own weights and
+  solve; new keys `acfs_var_g` (used by `fit_lpi` for the `acfs_g` gates) and
+  `impulse_rows_removed_fraction_e`. Effect with `impulse_rows`: about half the
+  rows removed above 150 km, smaller error bars there, `acfs_g` bit-identical;
+  default products unchanged (7575c82).
+
 ### Changed
 Branch `apply-review-decisions`: Henrik's review of every change on `main`
 against Juha's repository, by category (`documents/overview/repo_comparison.tex`,
