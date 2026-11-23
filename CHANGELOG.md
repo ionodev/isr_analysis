@@ -23,18 +23,6 @@ conflict here; resolve by keeping all the entries.
 
 ## Waiting for gate B (on branches, not merged)
 
-### Fixed
-Branch `clutfix-impulse-rows`, record `review/records/2026-11-22-clutfix-impulse-rows.md`, memo 55.
-- **The impulse-row removal no longer removes the clutter partner's rows from
-  the plain lagged products.** The plain products (`acfs_e`, fitted above
-  `clutter_cutoff_km`, 150 km in product-v3) lose only the rows of the pulse's
-  own impulses; the clutter-subtracted ones (`acfs_g`) still lose those of the
-  pulse and its partner. Where the masks differ each gets its own weights and
-  solve; new keys `acfs_var_g` (used by `fit_lpi` for the `acfs_g` gates) and
-  `impulse_rows_removed_fraction_e`. Effect with `impulse_rows`: about half the
-  rows removed above 150 km, smaller error bars there, `acfs_g` bit-identical;
-  default products unchanged (7575c82).
-
 ### Changed
 Branch `apply-review-decisions`: Henrik's review of every change on `main`
 against Juha's repository, by category (`documents/overview/repo_comparison.tex`,
@@ -57,6 +45,21 @@ this branch applies; record `review/records/2026-10-12-apply-review-decisions.md
   `compare_tsys_sky.py`, `sky_noise_model.py`, `tsys_harvest.py`,
   `plot_raw_voltage.py`) leave `main` for now; they are kept on the branch
   `main-before-review-2026-10-03`. The unit tests stay (da1bdac).
+
+## Pending: the weeks 10-12 delivery (on `weeks-10-12`, to be dated at the merge into main)
+
+### Fixed
+Branch `clutfix-impulse-rows`, adopted by Henrik on 23 November 2026 (gate B) and
+fast-forwarded into `weeks-10-12`; record `review/records/2026-11-22-clutfix-impulse-rows.md`, memo 55.
+- **The impulse-row removal no longer removes the clutter partner's rows from
+  the plain lagged products.** The plain products (`acfs_e`, fitted above
+  `clutter_cutoff_km`, 150 km in product-v3) lose only the rows of the pulse's
+  own impulses; the clutter-subtracted ones (`acfs_g`) still lose those of the
+  pulse and its partner. Where the masks differ each gets its own weights and
+  solve; new keys `acfs_var_g` (used by `fit_lpi` for the `acfs_g` gates) and
+  `impulse_rows_removed_fraction_e`. Effect with `impulse_rows`: about half the
+  rows removed above 150 km, smaller error bars there, `acfs_g` bit-identical;
+  default products unchanged (7575c82).
 
 ## Pending: the weeks 7-9 delivery (pull request, to be dated at the merge)
 

@@ -108,3 +108,6 @@ Entry under "Waiting for gate B" in `CHANGELOG.md`.
 
 - Gate A: tests, benchmark, code review and record done on 22-23 November 2026.
 - Gate B: waiting for Henrik (whether to adopt the fix in the paper and the product).
+- 23 November 2026: Henrik adopted the fix ("adopt the fix and update the paper's numbers");
+  `weeks-10-12` fast-forwarded to 3817dfc. The product is now v3-loo100c20-cf
+  (`VERSIONS.md`), the paper's numbers come from its runs.
