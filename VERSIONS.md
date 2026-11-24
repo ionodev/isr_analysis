@@ -66,8 +66,7 @@ and the 60-s variant for the eclipse, the 27-km bottomside window below
 v3-loo100 showed implausible good gates at 11-13 UT on 8 April (single
 pulses with interference keep full weight when the row is left out), so
 Henrik chose a row cap (option A): `weights_row_cap` 20, the smallest cap
-whose clean Monte Carlo bias stays within 0.5 % (`weight_bias_mc.py`, on the
-branch `analysis-scripts`).
+whose clean Monte Carlo bias stays within 0.5 % (`analysis/weight_bias_mc.py`).
 v3-loo100c20 has v3's retention, precision and robustness and
 leave-one-out's absence of bias; on 8 April it is at least as good as
 Madrigal in every measure. Memo 52 is redone on its 60-s fits.

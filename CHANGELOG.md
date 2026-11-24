@@ -99,17 +99,19 @@ benchmark of 407b40b against 5e5e5bc gives 80 of 80 outputs bit-identical
 - `VERSIONS.md`: the product versions v0 to v3-loo100c20-cf with their
   memos, commits, runs and viewer exports, and how v3 was optimised
   (5e5e5bc to e4a13e6).
-- **Only the pipeline on the delivery branch** (Henrik, 24 November): the 22
+- **The analysis scripts in their own folder** (Henrik, 24 November): the 22
   analysis and evaluation scripts of weeks 7-12, which the pipeline does not
   import (the `compare_*`, `eclipse_*`, `inject_*` and measure scripts,
   `range_lag_doppler.py`, `ion_line_fits.py`, `weight_bias_mc.py`, and the
-  others named above), leave `weeks-10-12` before its merge into `main`.
-  They stay on the branch `analysis-scripts` (19d181c) and in the tags
-  `product-v1` to `product-v3.1`, where the memos' Reproduce sections find
-  them. Kept: everything `run_analysis.py` imports, `fit_quality.py` (the
-  density constants and quality flags of the products) and the plasma-line
-  calibration (`plasma_line_picker.py`, `plasma_line_density_scale.py`),
-  which produces those constants. No effect on any output.
+  others named above), move to `analysis/`, with a README listing each and
+  its memo. Each gets one line that puts the top folder on its import path;
+  otherwise unchanged. The top folder keeps the pipeline (everything
+  `run_analysis.py` imports), `fit_quality.py` (the products' density
+  constants and quality flags), the plasma-line calibration
+  (`plasma_line_picker.py`, `plasma_line_density_scale.py`), which produces
+  those constants, and the tests. The memos' Reproduce sections name commits
+  and tags from before the move, where the scripts are in the top folder.
+  No effect on any output.
 
 ## Pending: the weeks 7-9 delivery (pull request, to be dated at the merge)
 
