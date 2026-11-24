@@ -1,0 +1,59 @@
+{
+ "_notes": [
+  "The basic pipeline: lag-profile inversion and fit of the coded pulses, and optionally the",
+  "long pulse; no satellite or impulse handling. See example_v3.json for those."
+ ],
+ "experiment": "example_basic",
+ "data_dir": "/path/to/usrp-rx0-r_YYYYMMDDTHHMMSS_YYYYMMDDTHHMMSS",
+ "output_dir": "/path/to/output",
+ "max_time_s": 600,
+ "steps": {
+  "lpi": {
+   "enabled": true,
+   "channel": "zenith-l",
+   "range_gate_us": 60,
+   "avg_dur": 10,
+   "min_tx_frac": 0.5,
+   "pass_band_hz": 100000,
+   "filter_len": 20,
+   "max_range_delay_us": 7000,
+   "save_acf_images": true,
+   "lag_avg": 1,
+   "reanalyze": false
+  },
+  "fit_lpi": {
+   "enabled": true,
+   "channel": "zenith-l",
+   "max_dt": 300,
+   "first_lag": 0,
+   "range_avg": [
+    1,
+    3,
+    5
+   ],
+   "reanalyze": false
+  },
+  "long_pulse": {
+   "enabled": false,
+   "channel": "zenith-l",
+   "mode": 300,
+   "avg_dur": 10,
+   "step": 10,
+   "avg_type": "outlier_removal",
+   "postfix": "_outlier",
+   "min_tx_pulses": 100,
+   "reanalyze": false
+  },
+  "fit_lp": {
+   "enabled": false,
+   "channel": "zenith-l",
+   "avg_dur": 600,
+   "ridx": [
+    35,
+    230
+   ],
+   "remove_space_objects": false,
+   "reanalyze": false
+  }
+ }
+}

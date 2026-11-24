@@ -1,0 +1,11 @@
+# The pipeline (run_analysis.py and pipeline/). Lower bounds: the versions it is
+# tested with (Python 3.14). pyfftw needs the FFTW library (libfftw3-dev) and
+# mpi4py an MPI implementation (e.g. OpenMPI) on the system.
+numpy>=2.3
+scipy>=1.16
+matplotlib>=3.10
+h5py>=3.15
+digital_rf>=2.6
+mpi4py>=4.1
+pyfftw>=0.15
+jcoord @ git+https://github.com/jvierine/jcoord.git

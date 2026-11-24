@@ -2,6 +2,7 @@
 # ignore experiment configs with machine specific data paths
 config/*
 !config/millstone_2023-09-05.json
+!config/example_*.json
 
 # cached ISR spectrum interpolation tables, ~64 MB each, regenerated on demand.
 # the placeholder keeps the directory in a fresh clone

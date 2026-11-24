@@ -1,9 +1,10 @@
+import sys
 import numpy as n
 import matplotlib.pyplot as plt
 from digital_rf import DigitalRFReader, DigitalMetadataReader, DigitalMetadataWriter
 import scipy.interpolate as sint
 
-def get_tx_power_model(dirn="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/metadata/powermeter"):
+def get_tx_power_model(dirn):
     print("Reading transmit power meter metadata. Might take a few seconds")
     dmd=DigitalMetadataReader(dirn)
     b=dmd.get_bounds()
@@ -35,4 +36,4 @@ def get_tx_power_model(dirn="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2
     return(zenith_pwrf,misa_pwrf)
     
 if __name__ == "__main__":
-    get_tx_power_model()
+    get_tx_power_model(sys.argv[1])  # the powermeter folder: <data dir>/metadata/powermeter

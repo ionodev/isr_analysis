@@ -240,9 +240,9 @@ def fit_gaussian(acf,lags,var,var_scale=4.0,guess=n.array([0,10]),plot=False):
         
         plt.errorbar(lags*1e6,nacf.real,yerr=2*std)
         plt.errorbar(lags*1e6,nacf.imag,yerr=2*std)
-        plt.xlabel("Lag ($\mu$s)")
+        plt.xlabel("Lag ($\\mu$s)")
         plt.ylabel("Autocorrelation function R($\\tau)$")
-        plt.title("Gaussian fit\ndoppler width %1.0f $\pm$ %1.0f m/s vel %1.0f $\pm$ %1.0f m/s"%(xhat[0],sigmas[0],xhat[1],sigmas[1]))
+        plt.title("Gaussian fit\ndoppler width %1.0f $\\pm$ %1.0f m/s vel %1.0f $\\pm$ %1.0f m/s"%(xhat[0],sigmas[0],xhat[1],sigmas[1]))
         plt.show()
     
     return(xhat,sigmas)
@@ -410,9 +410,9 @@ def fit_acf(acf,
         plt.errorbar(lags*1e6,acf.real,yerr=2*std)
         plt.errorbar(lags*1e6,acf.imag,yerr=2*std)
         plt.ylim([-1.0*zl_guess,2*zl_guess])
-        plt.xlabel("Lag ($\mu$s)")
+        plt.xlabel("Lag ($\\mu$s)")
         plt.ylabel("Autocorrelation function R($\\tau)$")
-        plt.title("%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\pm$%1.0f (m/s) $\\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],mol_fr))
+        plt.title("%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\\pm$%1.0f (m/s) $\\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],mol_fr))
         plt.show()
     return(xhat,model,sigmas,Sigma)
 
@@ -546,9 +546,9 @@ def fit_acf_ts(acf,
         plt.errorbar(lags*1e6,acf.real,yerr=2*std)
         plt.errorbar(lags*1e6,acf.imag,yerr=2*std)
         plt.ylim([-1.0*zl_guess,2*zl_guess])
-        plt.xlabel("Lag ($\mu$s)")
+        plt.xlabel("Lag ($\\mu$s)")
         plt.ylabel("Autocorrelation function R($\\tau)$")
-        plt.title("%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\pm$%1.0f (m/s) $\\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],ofrac))
+        plt.title("%1.0f km\nT$_e$=%1.0f K T$_i$=%1.0f K v$_i$=%1.0f$\\pm$%1.0f (m/s) $\\rho=$%1.1f"%(rgs,xhat[0]*xhat[1],xhat[1],xhat[2],sigmas[2],ofrac))
         plt.show()
     return(xhat[0:4],model,sigmas,Sigma,ofrac)
 
@@ -809,13 +809,13 @@ def fit_lpifiles(dirn="lpi_f",
         plt.subplot(121)
         plt.pcolormesh(lag[first_lag:n_lags]*1e6,rgs,model_acfs[:,first_lag:n_lags].real,vmin=-0.2,vmax=1.1)
         plt.title("Best fit")        
-        plt.xlabel("Lag ($\mu$s)")
+        plt.xlabel("Lag ($\\mu$s)")
         plt.ylabel("Range (km)")        
         plt.colorbar()
         plt.subplot(122)
         plt.pcolormesh(lag[first_lag:n_lags]*1e6,rgs,acf0[:,first_lag:n_lags].real,vmin=-0.2,vmax=1.1)
         plt.title("Measurement")
-        plt.xlabel("Lag ($\mu$s)")
+        plt.xlabel("Lag ($\\mu$s)")
         plt.ylabel("Range (km)")
         plt.colorbar()
         plt.tight_layout()
@@ -890,100 +890,6 @@ def fit_lpifiles(dirn="lpi_f",
 
 
 if __name__ == "__main__":
-    import sys
-
-    # cmd line
-    #    fit_lpifiles(dirn=sys.argv[1],n_avg=24,plot=bool(int(sys.argv[2])),first_lag=1,reanalyze=True, range_avg=4)
-
-    if False:
-        dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/"
-        zpm,mpm=txp.get_tx_power_model(dirn="%s/metadata/powermeter"%(dirname))
-        fit_lpifiles(dirn="%s/lpi_240"%(dirname),output_dir="%s/ts"%(dirname),n_avg=12,plot=0,first_lag=0,reanalyze=True, zpm=zpm, use_gc=True)
-        exit(0)
-    
-    if True:
-        dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533"        
-        zpm,mpm=txp.get_tx_power_model(dirn="%s/metadata/powermeter"%(dirname))
-        fit_lpifiles(dirn="%s/lpi_240"%(dirname),output_dir="%s/lpi_240"%(dirname),n_avg=12,plot=0,first_lag=1,reanalyze=True, zpm=zpm, range_avg=n.array([0,2,2]))
-
-        
-
-        fit_lpifiles(dirn="%s/lpi_120"%(dirname),output_dir="%s/lpi_120"%(dirname),n_avg=12,plot=0,first_lag=1,reanalyze=True, zpm=zpm, range_avg=n.array([0,2,2]))
-
-#                 range_limits=n.array([0,300,700,1500]),  # range averaging boundaries in km
- #                range_avg=n.array([0,  1,  2]),          # range averaging window in range gates symmetric windows a        
-
-        fit_lpifiles(dirn="%s/lpi_60"%(dirname),output_dir="%s/lpi_60"%(dirname),n_avg=12,plot=0,first_lag=1,reanalyze=True, zpm=zpm, range_avg=n.array([1,2,2]))        
-
-        fit_lpifiles(dirn="%s/lpi_30"%(dirname),output_dir="%s/lpi_30"%(dirname),n_avg=12,plot=0,first_lag=1,reanalyze=True, zpm=zpm, range_avg=n.array([1,2,2]))        
-        
-        exit(0)
-
-    if False:
-        dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059"
-        zpm,mpm=txp.get_tx_power_model(dirn="%s/metadata/powermeter"%(dirname))
-        fit_lpifiles(dirn="%s/lpi_240"%(dirname),output_dir="%s/lpi_240"%(dirname),n_avg=12,plot=0,first_lag=0,reanalyze=True, zpm=zpm)        
-        exit(0)
-#        fit_lpifiles(dirn="lpi_2023-09-24_30",output_dir="lpi_2023-09-24_30/e",n_avg=12,plot=0,first_lag=0,reanalyze=True, zpm=zpm, range_avg=3)        
-        
-        #fit_lpifiles(dirn="lpi_2023-09-24_60",output_dir="lpi_2023-09-24_60/e",n_avg=6,plot=0,first_lag=0,reanalyze=True, zpm=zpm, range_avg=0)
-        #fit_lpifiles(dirn="lpi_2023-09-24_30",output_dir="lpi_2023-09-24_30/e",n_avg=6,plot=0,first_lag=0,reanalyze=True, zpm=zpm, range_avg=1)
-        
-
-
-    if False:
-        zpm,mpm=txp.get_tx_power_model(dirn="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/metadata/powermeter")
-        # e-region analysis
-        #fit_lpifiles(dirn="lpi_30",output_dir="lpi_30/e0",n_avg=6,plot=0,first_lag=1,reanalyze=True, range_avg=0)
-        fit_lpifiles(dirn="lpi_30",output_dir="lpi_30/e3",n_avg=6,plot=0,first_lag=1,reanalyze=True, range_avg=1)    
-
-
-    # try out getting topside using different methods
-    # topside 30
-    #fit_lpifiles(dirn="lpi_30",n_avg=24,plot=0,first_lag=1,reanalyze=True, range_avg=16)
-
-    
-    # topside 60
-    #fit_lpifiles(dirn="lpi_60",n_avg=24,plot=0,first_lag=1,reanalyze=True, range_avg=8)
-
-    
-    # topside 120
-    #fit_lpifiles(dirn="lpi_120",n_avg=24,plot=0,first_lag=1,reanalyze=True, range_avg=4)
-
-    # topside 240
-#    fit_lpifiles(dirn="lpi_240",n_avg=24,plot=0,first_lag=1,reanalyze=True, range_avg=2)
-
-    
-#    fit_lpifiles(dirn="lpi_f2",n_avg=12,plot=False,first_lag=1)
-#    fit_lpifiles(dirn="lpi_e",n_avg=12,plot=False,first_lag=1,reanalyze=True)   
-#    fit_lpifiles(dirn="lpi_ts",n_avg=1,plot=False)        
-
- #   fit_lpifiles(dirn="lpi_e",n_avg=60)
-
-#    h=h5py.File("avg.h5","r")
-#    acf=h["acf"][()]
-#    var=n.real(h["var"][()])
-#    lag=h["lag"][()]
-#    rgs=h["rgs"][()]
-
-#    pp=[]
-#    for ri in range(acf.shape[0]):
-#        try:
-#            res=fit_acf(acf[ri,:],lag,rgs,var[ri,:])
-#            pp.append(res)
-#        except:
-#            pp.append([n.nan,n.nan,n.nan,n.nan])
-#            traceback.print_exc()
-#            print("err")
-
-#    pp=n.array(pp)
-#    plt.plot(pp[:,0]*pp[:,1],rgs,".",label="Te")
-#    plt.plot(pp[:,1],rgs,".",label="Ti")
-#    plt.plot(pp[:,2]*10,rgs,".",label="vi*10")
-#    plt.plot(pp[:,3]*100,rgs,".",label="zl*100")
-#    plt.legend()
-#    plt.show()
-
-        
-        
-#    h.close()
+    # The pipeline runs this step from run_analysis.py with a JSON
+    # configuration (see the README); this module has no command line of its own.
+    raise SystemExit("Run the pipeline with: python3 run_analysis.py <config.json>")

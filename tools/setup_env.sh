@@ -9,19 +9,12 @@ python3 -m venv --system-site-packages "${VENV_DIR}"
 
 "${VENV_DIR}/bin/pip" install --upgrade pip
 
-# pyfftw needs libfftw3-dev (already installed on revontuli)
-"${VENV_DIR}/bin/pip" install pyfftw
-
-# digital_rf: GNU Radio / DigitalRF reader/writer
-"${VENV_DIR}/bin/pip" install digital_rf
-
-# MPI Python bindings
-"${VENV_DIR}/bin/pip" install mpi4py
-
-# Geographic coordinate conversion (required by fit_lpi)
-"${VENV_DIR}/bin/pip" install git+https://github.com/jvierine/jcoord.git
+# The pipeline's packages (requirements.txt); numpy, scipy, matplotlib and
+# h5py come from the system when it has them. pyfftw needs libfftw3-dev, mpi4py
+# an MPI implementation (e.g. OpenMPI).
+"${VENV_DIR}/bin/pip" install -r "$(dirname "$0")/../requirements.txt"
 
 echo ""
 echo "Environment ready at ${VENV_DIR}"
 echo "Activate with:  source ${VENV_DIR}/bin/activate"
-echo "Run analysis:   mpirun -np 24 ${VENV_DIR}/bin/python3 run_analysis.py config/millstone_2023-09-05.json"
+echo "Run analysis:   mpirun -np 24 ${VENV_DIR}/bin/python3 run_analysis.py config/my_run.json"

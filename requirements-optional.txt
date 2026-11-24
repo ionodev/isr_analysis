@@ -1,0 +1,4 @@
+# Only for some scripts outside the pipeline.
+pytest>=9.0             # tests/
+astropy>=8.0            # analysis/eclipse_timing.py
+mpl_point_clicker       # calibration/plasma_line_clicker.py (manual picking)

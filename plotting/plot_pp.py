@@ -255,17 +255,17 @@ if False:
     if n.any(have_dTe):
         p=ax00.pcolormesh(t_mat,r_mat,DP[:,:,4],vmin=0,vmax=4000,cmap="plasma")
         cb=fig.colorbar(p,ax=ax00)
-        cb.set_label("$\Delta T_e$ (K)")
+        cb.set_label("$\\Delta T_e$ (K)")
     else:
         p=ax00.pcolormesh(t_mat,r_mat,DP[:,:,0],vmin=0,vmax=5,cmap="plasma")
         cb=fig.colorbar(p,ax=ax00)
-        cb.set_label("$\Delta T_e/T_i$")
+        cb.set_label("$\\Delta T_e/T_i$")
     ax00.set_xlabel("Time (UT)\n(since %s)"%(stuffr.unix2datestr(tv[0])))
     ax00.set_ylabel("Range (km)")
 
     p=ax01.pcolormesh(t_mat,r_mat,DP[:,:,1],vmin=0,vmax=4000,cmap="plasma")
     cb=fig.colorbar(p,ax=ax01)
-    cb.set_label("$\Delta T_i$ (K)")
+    cb.set_label("$\\Delta T_i$ (K)")
     ax01.set_xlabel("Time (UT)")
     ax01.set_ylabel("Range (km)")
 
@@ -274,12 +274,12 @@ if False:
     ax10.set_ylabel("Range (km)")
 
     cb=fig.colorbar(p,ax=ax10)
-    cb.set_label("$\Delta v_i$ (m/s)")
+    cb.set_label("$\\Delta v_i$ (m/s)")
 
 
     p=ax11.pcolormesh(t_mat,r_mat,DP[:,:,3],vmin=0,vmax=1.0,cmap="plasma")
     cb=fig.colorbar(p,ax=ax11)
-    cb.set_label("$\Delta N_e/N_e$")
+    cb.set_label("$\\Delta N_e/N_e$")
     ax11.set_xlabel("Time (UT)")
     ax11.set_ylabel("Range (km)")
 

@@ -306,7 +306,7 @@ def fit_gaussian(meas,dop_amb,dop_hz,hgt,fit_idx,plot=True,frad=440.2e6):
     return(xhat)
 
 
-def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/",
+def fit_spectra(dirname,
                 channel="zenith-l",
                 postfix="_800_outlier",
                 reanalyze=False,
@@ -716,62 +716,7 @@ def fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-
         h.close()
 
 
-#dirs=[
-# dirs=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-20/usrp-rx0-r_20230920T202127_20230921T040637/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-10-14/usrp-rx0-r_20231014T130000_20231015T041500",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03/usrp-rx0-r_20211203T000000_20211203T033600/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-05/usrp-rx0-r_20211205T000000_20211205T160100/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-06/usrp-rx0-r_20211206T000000_20211206T132500/",
-#       "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-21/usrp-rx0-r_20211221T125500_20211221T220000/"]
 if __name__ == "__main__":
-    # a driver kept for running this file directly. it used to execute on
-    # import, so importing fit_lp started analysis runs against hardcoded
-    # paths; run_analysis.py imports this module.
-    dirs=["/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"]
-
-    for d in dirs:
-        try:
-            fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
-        except:
-            print("couldn't fit misa")
-            traceback.print_exc()
-        try:
-            fit_spectra(dirname=d, channel="zenith-l", avg_dur=30, reanalyze=False,postfix="_300_outlier")
-        except:
-            print("couldn't fit zenith")
-            traceback.print_exc()
-
-        try:
-            fit_spectra(dirname=d, channel="misa-l", avg_dur=30, reanalyze=False,postfix="_800_outlier")
-        except:
-            print("couldn't fit low-elevation misa")
-            traceback.print_exc()
-        
-
-    #    try:
-     #       fit_spectra(dirname=d, channel="zenith-l", avg_dur=300, reanalyze=False)
-      #  except:
-       #     print("couldn't fit zenith")
-        #    traceback.print_exc()        
-    
-      
-
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="zenith-l", avg_dur=300)
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/", channel="misa-l", avg_dur=300)
-
-
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="zenith-l", avg_dur=600)
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/", channel="misa-l", avg_dur=600)
-
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054", n_avg=30)
-
-
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/", channel="zenith-l", n_avg=30)
-
-
-    #fit_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/", n_avg=30)
+    # The pipeline runs this step from run_analysis.py with a JSON
+    # configuration (see the README); this module has no command line of its own.
+    raise SystemExit("Run the pipeline with: python3 run_analysis.py <config.json>")
