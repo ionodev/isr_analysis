@@ -126,7 +126,8 @@ def fit(zpm,mpm,fname="il_1693950288.h5"):
 if __name__ == "__main__":
     fl=glob.glob("tmp/il_*.h5")
     fl.sort()
-    zpm,mpm=txp.get_tx_power_model(dirn="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/metadata/powermeter")    
+    # usage: python3 analysis/full_profile_fit.py <data dir>, with the long-pulse spectra in tmp/il_*.h5
+    zpm,mpm=txp.get_tx_power_model(dirn="%s/metadata/powermeter"%(sys.argv[1]))    
     pwr,rgs,ts=fit(zpm,mpm,fl[0])
     S=n.zeros([len(fl),len(pwr)])
 

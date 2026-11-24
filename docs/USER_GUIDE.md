@@ -238,6 +238,8 @@ sys.path.insert(0, "pipeline")
 import fit_quality as fq
 
 F = fq.load_fits("/path/to/output_dir")     # reads lpi_60/zenith-l/pp-*.h5
+# other settings: fq.load_fits(d, subdir="lpi_30/misa-l"); another recording's
+# density constant: fq.load_fits(d, constant=6.2e8)
 # F["t0"], F["t1"]: window times; F["r"]: ranges (km);
 # F["ne"], F["Te"], F["Ti"], F["vi"] and their errors "dne", ...: [window, gate]
 flags = fq.flags(F)                         # one bit field per gate
@@ -265,8 +267,9 @@ $n_e = C \times$ `ne`. `fit_quality.load_fits` applies it.
 `fit_quality.DENSITY_CONSTANT_BY_DAY` holds the constants measured for the
 recording of 7–8 April 2024 from the plasma lines, and `DENSITY_CONSTANT`
 the value used for every other day. **For another recording, or other
-processing settings, measure the constant again**; it depends on the
-radar's state and on the processing. The tools are in `calibration/`:
+processing settings, measure the constant again**, and pass it to
+`load_fits(..., constant=C)`; it depends on the radar's state and on the
+processing. The tools are in `calibration/`:
 
 1. `plasma_line_picker.py` finds the plasma-line ridge in the recording's
    plasma-line spectra automatically (`plasma_line_clicker.py` lets you
@@ -279,10 +282,10 @@ Each script's usage is in its docstring.
 
 ## 9. Known limitations
 
-- `fit_quality.load_fits` reads `lpi_60/zenith-l/`: the zenith channel with
-  60-µs gates. Other settings need the path changed.
 - The density constants in `fit_quality.py` are for 7–8 April 2024
-  (section 8).
-- The scripts in `analysis/` reproduce the project's evaluations; several
-  contain paths to the project's own data and need them changed before use.
+  (section 8); `fit_quality.residual_columns` numbers the integration
+  periods from the start of that recording.
+- The scripts in `analysis/` reproduce the project's evaluations on the
+  April 2024 recording; they find its data through environment variables
+  (`analysis/README.md`).
 - Satellite echoes too faint for the detector are not removed.

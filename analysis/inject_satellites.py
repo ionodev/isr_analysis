@@ -39,14 +39,15 @@ import scipy.constants as sc
 from digital_rf import DigitalMetadataReader
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
+import paths  # noqa: E402  (the data paths, analysis/paths.py)
 import outlier_lpi as olpi
 import satellite_columns as satcol
 from radar_timing import TMM
 from raw_reader import RawReader
 from tx_delay import fractional_shift
 
-DATA = "/mnt/data/juha/millstone_hill/isr/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"
-CATALOGUE = "/mnt/data/henrik/satellite_detections_2026-10-02"
+DATA = paths.DATA_DIR
+CATALOGUE = paths.SATELLITE_CATALOGUE
 CHANNEL = "zenith-l"
 CHANNEL_DELAY_US = 10.62
 # the quiet reference interval: one zenith cycle, 7 April 20:51:00-20:53:50 UTC

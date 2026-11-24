@@ -37,6 +37,7 @@ import numpy as n
 
 import compare_variants as cv
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
+import paths  # noqa: E402  (the data paths, analysis/paths.py)
 import fit_quality as fq
 
 BANDS = [(150, 250), (250, 350), (350, 450), (450, 600), (600, 700)]
@@ -147,8 +148,7 @@ def figures(results, off_dir, on_dir, intervals, fig_dir):
     plt.close(fig)
 
 
-def example_figure(fig_dir, period, data_dir="/mnt/data/juha/millstone_hill/isr/eclipse2024/"
-                   "usrp-rx0-r_20240407T100000_20240409T110000"):
+def example_figure(fig_dir, period, data_dir=paths.DATA_DIR):
     """One pulse of a spark period: the raw power with the impulses found, and
     the rows each lag loses."""
     import matplotlib
