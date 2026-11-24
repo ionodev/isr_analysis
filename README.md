@@ -79,6 +79,9 @@ modules it uses are in `pipeline/`.
 
 ## Quick start
 
+The [user guide](docs/USER_GUIDE.md) explains the installation, the input data,
+the configuration, the output files and how to read them.
+
 Requirements: Python 3, the FFTW library (`libfftw3-dev`) and an MPI
 implementation (e.g. OpenMPI); the Python packages are in `requirements.txt`.
 
@@ -103,7 +106,7 @@ removed, and leave-one-out weights. It needs two things first:
 
 ```bash
 # 1. the satellite catalogue: every pulse searched for echoes
-python3 pipeline/single_pulse_satellite_cfar.py --data /path/to/data --output /path/to/satellite_catalogue --pfa 1e-6
+mpirun -np 24 python3 pipeline/single_pulse_satellite_cfar.py --data /path/to/data --output /path/to/satellite_catalogue --pfa 1e-6
 # 2. the wider theory table the version 3 fit uses (written to data/v3/wide)
 mpirun -np 24 python3 tools/make_table.py data/v3
 ```
@@ -135,7 +138,7 @@ the top folder.
 | `tools/` | environment setup and the regression benchmark |
 | `config/` | run configurations |
 | `data/` | the theory lookup tables (built on the first run) |
-| `docs/`, `figs/` | the analysis-server guide; figures |
+| `docs/`, `figs/` | the user guide, the configuration reference and the analysis-server guide; figures |
 
 The modules in `pipeline/`:
 
