@@ -632,7 +632,8 @@ def il_d():
     plt.show()
 
 
-def il_table(mass0=16.0, mass1=1.0, radar_freq=440.2e6, B=45000e-9, alpha=90, outdir="."):
+def il_table(mass0=16.0, mass1=1.0, radar_freq=440.2e6, B=45000e-9, alpha=90, outdir=".",
+             nes=None, te_ti_ratios=None, tis=None, frs=None):
     """
     Create an interpolation table for ion-line spectra, given a range of plasma-parameters.
     2-ion isr spec
@@ -646,6 +647,10 @@ def il_table(mass0=16.0, mass1=1.0, radar_freq=440.2e6, B=45000e-9, alpha=90, ou
     returning, so the table is on disk for everyone when this returns.
 
     This is a collective call: every rank must enter it.
+
+    nes, te_ti_ratios, tis, frs: the grid (densities, Te/Ti, Ti in K, ion
+    fractions); None gives the default grid below. il_interp needs every axis
+    but the densities evenly spaced.
     """
     # optional MPI. falls back to serial when not run under mpirun
     try:
@@ -659,17 +664,19 @@ def il_table(mass0=16.0, mass1=1.0, radar_freq=440.2e6, B=45000e-9, alpha=90, ou
         rank=0
         size=1
 
-    n_tr=6
-    n_fr=10
-    n_ti=20
     n_freq=512
-    n_ne=13
     # above 1e12, the debye lengths don't play a role
-    nes=10**n.linspace(8,12,num=n_ne)
-    te_ti_ratios=n.linspace(1,3,num=n_tr)
-    tis=n.linspace(100,4000,num=n_ti)
+    if nes is None:
+        nes=10**n.linspace(8,12,num=13)
+    if te_ti_ratios is None:
+        te_ti_ratios=n.linspace(1,3,num=6)
+    if tis is None:
+        tis=n.linspace(100,4000,num=20)
     # ion fractions
-    frs=n.linspace(0,1,num=n_fr)
+    if frs is None:
+        frs=n.linspace(0,1,num=10)
+    nes,te_ti_ratios,tis,frs=[n.asarray(x,dtype=float) for x in (nes,te_ti_ratios,tis,frs)]
+    n_ne,n_tr,n_ti,n_fr=len(nes),len(te_ti_ratios),len(tis),len(frs)
 
     #om = n.linspace(-n.pi*30e3, n.pi*30e3, num=n_freq)
 

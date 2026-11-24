@@ -68,3 +68,36 @@ def test_ols_covariance_is_the_sandwich():
     assert n.isnan(C[2, 2]) and n.isfinite(C[n.ix_(k, k)]).all()
     # with every row at the common level it is the nominal covariance
     assert n.allclose(ols_covariance(Sigma, B, n.ones(60), unc)[n.ix_(k, k)], Sigma[n.ix_(k, k)])
+
+
+def test_schur_solve_equals_the_full_solve():
+    from scipy import sparse
+    from outlier_lpi import schur_solve, invert_normal
+    rng = n.random.default_rng(3)
+    n_pulse, rows, n_p = 40, 12, 6
+    blocks, groups, col = [], [], 0
+    P = rng.normal(size=(n_pulse * rows, n_p)) + 1j * rng.normal(size=(n_pulse * rows, n_p))
+    P[:, 2] = 0                                            # an unconstrained plasma unknown
+    S = []
+    for i in range(n_pulse):
+        k = int(rng.integers(0, 3))                        # 0-2 satellite columns per pulse
+        g = []
+        for _ in range(k):
+            c = n.zeros(n_pulse * rows, complex)
+            c[i * rows:(i + 1) * rows] = rng.normal(size=rows) + 1j * rng.normal(size=rows)
+            S.append(c)
+            g.append(col)
+            col += 1
+        if g:
+            groups.append(g)
+    B = sparse.csc_matrix(n.hstack([P, n.array(S).T]))
+    m = rng.normal(size=B.shape[0]) + 1j * rng.normal(size=B.shape[0])
+    (x,), var, unc = schur_solve(B, n_p, groups, [m])
+    N = (B.conj().T @ B).toarray()
+    Sig, unc_full = invert_normal(N)
+    xf = Sig @ (B.conj().T @ m)
+    keep = [i for i in range(B.shape[1]) if i != 2]
+    assert list(unc) == [2] and list(unc_full) == [2]
+    assert n.allclose(x[keep], xf[keep])
+    assert n.allclose(var[keep], n.real(n.diag(Sig))[keep])
+    assert n.isnan(x[2])

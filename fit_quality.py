@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""
+Fitted plasma parameters with quality flags, for the comparison of the LPI
+variants and the eclipse plots.
+
+load_fits() reads the fit_lpi output (pp-*.h5) of a directory into arrays
+(time, range) and scales n_e by the density constant of the window's day
+(DENSITY_CONSTANT_BY_DAY, else DENSITY_CONSTANT). flags() marks each fitted
+gate:
+
+    FAILED    a parameter or its uncertainty is not finite
+    BOUND     the fit ends at a limit of its search: Te/Ti at 0.99 or 3 (or
+              the edge of a wider table, te_ti_max of the fit files),
+              Ti at 150 or 3000 K, |vi| at 1500 m/s (fit_lpi's bounds)
+    NOISY     dne/ne or dTe/Te above 0.5
+    SATELLITE a catalogued echo of at least 20 dB within one gate of it
+              during the fit window (for information: with the satellite
+              columns it is modelled, without them it may bias the gate)
+    RESIDUAL  a satellite column within one gate of it during the fit window
+              whose own rows keep residual power after the solve
+              (outlier_lpi sat_resid, mean of lags 1-10) above
+              RESIDUAL_THRESHOLD times the noise: an echo the column did not
+              remove (for information, like SATELLITE). residual_columns()
+              reads them from the LPI files
+
+A gate is good when it carries none of the first three.
+"""
+
+import datetime
+import glob
+import os
+
+import h5py
+import numpy as n
+
+# n_e = constant x the fit's relative density. The constants of the final
+# product (v3 with leave-one-out weights over 100 pulses and the row cap of
+# 20, v3-loo100c20; Memo 54, decided by Henrik on 2 November 2026), from the
+# plasma lines of its 60-s fits (Memo 53's method), one per day: the plasma
+# lines and the digisonde (5.85 and 6.33e8) see the same offset between the
+# days, which within each day follows neither the transmit power nor the
+# receiver gain, so a single constant would carry it into the
+# eclipse-to-control comparison. Other days get both days' constant.
+# (Before: 7.15e8 from the digisonde for every day, Memo 43; 5.90, 6.32 and
+# 6.20e8 for v3-loo100 without the cap.)
+DENSITY_CONSTANT = 6.24e8          # Memo 54: plasma lines, both days
+DENSITY_CONSTANT_BY_DAY = {"2024-04-07": 5.95e8, "2024-04-08": 6.36e8}
+T0_RECORDING = 1712484000          # the first period of the eclipse2024 recording
+PERIOD_S = 10
+
+FAILED, BOUND, NOISY, SATELLITE = 1, 2, 4, 8
+RESIDUAL = 16
+# a column's rows hold residual power of twice their local level (the
+# variance weights' running mean of |m|^2 over ten pulses, which includes the
+# echo itself; outlier_lpi.column_residuals). Below 1 where the column removed
+# the echo. An echo left on a pass longer than about ten pulses raises the
+# weights with it and stays near 1, so the flag catches only echoes left on a
+# few pulses: "not flagged" is not evidence that an echo was removed
+RESIDUAL_THRESHOLD = 2.0
+KM_PER_US = 299792458.0 / 2 / 1e9
+
+
+def density_constant(t):
+    """The density constant of the UTC day of time t (unix seconds)."""
+    day = datetime.datetime.fromtimestamp(t, datetime.timezone.utc).date().isoformat()
+    return DENSITY_CONSTANT_BY_DAY.get(day, DENSITY_CONSTANT)
+
+
+def load_fits(d, t_range=None, constant=None):
+    """constant: n_e's scale; None for density_constant() of each window."""
+    files = sorted(glob.glob(os.path.join(d, "lpi_60", "zenith-l", "pp-*.h5")))
+    rows = []
+    for f in files:
+        t = int(os.path.basename(f)[3:-3])
+        if t_range is not None and not (t_range[0] <= t < t_range[1]):
+            continue
+        with h5py.File(f, "r") as h:
+            t0 = float(h["t0"][()])
+            c = density_constant(t0) if constant is None else constant
+            rows.append(dict(t0=t0, t1=float(h["t1"][()]), r=h["rgs"][()],
+                             ne=h["ne"][()] * c, dne=h["dne"][()] * c,
+                             Te=h["Te"][()], dTe=h["dTe"][()], Ti=h["Ti"][()], dTi=h["dTi"][()],
+                             vi=h["vi"][()], dvi=h["dvi"][()],
+                             # the table's upper Te/Ti, stored by fit_lpi when it is not 3
+                             te_ti_max=float(h["te_ti_max"][()]) if "te_ti_max" in h else 3.0))
+    if not rows:
+        return None
+    out = {k: n.array([x[k] for x in rows]) for k in rows[0] if k != "r"}
+    out["r"] = rows[0]["r"]
+    return out
+
+
+def residual_columns(d, t_range=None, lags=slice(0, 10)):
+    """
+    The satellite columns of the LPI files of a directory with their
+    residual: rows (period index, range km, residual over the noise), from
+    sat_resid (mean over the given lags). Empty when the files have none.
+    """
+    out = []
+    for f in sorted(glob.glob(os.path.join(d, "lpi_60", "zenith-l", "lpi-*.h5"))):
+        t = int(os.path.basename(f)[4:-3])
+        if t_range is not None and not (t_range[0] <= t < t_range[1]):
+            continue
+        with h5py.File(f, "r") as h:
+            if "sat_resid" not in h or h["sat_resid"].shape[0] == 0:
+                continue
+            q = n.nanmean(h["sat_resid"][()][:, lags], axis=1)
+            r = h["sat_delay_samples"][()] * KM_PER_US
+        ai = round((t - T0_RECORDING) / PERIOD_S)
+        out.append(n.column_stack([n.full(len(q), ai), r, q]))
+    return n.concatenate(out) if out else n.zeros((0, 3))
+
+
+def flags(F, echoes=None, min_snr_db=20.0, columns=None, threshold=RESIDUAL_THRESHOLD):
+    """
+    Flag bits per (window, gate). echoes: rows (period index, range km, SNR
+    dB); columns: rows (period index, range km, residual), from
+    residual_columns, for the RESIDUAL flag.
+    """
+    f = n.zeros(F["ne"].shape, dtype=n.int16)
+    vals = [F[k] for k in ("ne", "dne", "Te", "dTe", "Ti", "dTi", "vi", "dvi")]
+    bad = n.zeros(f.shape, bool)
+    for v in vals:
+        bad |= ~n.isfinite(v)
+    f[bad] |= FAILED
+    with n.errstate(invalid="ignore", divide="ignore"):
+        ratio = F["Te"] / F["Ti"]
+        # the upper Te/Ti bound is the table's edge: 3, or that of a wider table
+        top = n.asarray(F.get("te_ti_max", 3.0), dtype=float)
+        top = top[:, None] if top.ndim == 1 else top
+        top = n.where(top == 3.0, 2.98, top - 0.02)
+        bound = (ratio <= 0.995) | (ratio >= top) | (F["Ti"] <= 151) | (F["Ti"] >= 2990) \
+            | (n.abs(F["vi"]) >= 1490)
+        noisy = (n.abs(F["dne"] / F["ne"]) > 0.5) | (n.abs(F["dTe"] / F["Te"]) > 0.5)
+    f[bound & ~bad] |= BOUND
+    f[noisy & ~bad] |= NOISY
+    if echoes is not None:
+        ai, rk, snr = echoes[:, 0], echoes[:, 1], echoes[:, 2]
+        gate = n.median(n.diff(F["r"]))
+        strong = snr >= min_snr_db
+        for w in range(len(F["t0"])):
+            a0 = (F["t0"][w] - T0_RECORDING) / PERIOD_S
+            a1 = (F["t1"][w] - T0_RECORDING) / PERIOD_S
+            m = strong & (ai >= a0) & (ai < a1)
+            for r in n.unique(rk[m]):
+                f[w, n.abs(F["r"] - r) <= gate] |= SATELLITE
+    if columns is not None and len(columns):
+        ai, rk, q = columns[:, 0], columns[:, 1], columns[:, 2]
+        gate = n.median(n.diff(F["r"]))
+        bad = q > threshold
+        for w in range(len(F["t0"])):
+            a0 = (F["t0"][w] - T0_RECORDING) / PERIOD_S
+            a1 = (F["t1"][w] - T0_RECORDING) / PERIOD_S
+            m = bad & (ai >= a0) & (ai < a1)
+            for r in n.unique(rk[m]):
+                f[w, n.abs(F["r"] - r) <= gate] |= RESIDUAL
+    return f
+
+
+def good(f):
+    return (f & (FAILED | BOUND | NOISY)) == 0

@@ -20,6 +20,13 @@ In short (Henrik, 2026-10-02):
 | The review tooling | the same |
 | Documentation only (Markdown, LaTeX) | committed to `main` directly, no pull request |
 
+**Period branches (Henrik, 2026-10-12).** The work of a period of the
+project plan is committed to one branch named after it (`weeks-7-9`,
+`weeks-10-12`, ...), and reaches `main` in one pull request when the period's
+delivery is ready. Each commit on the branch passes the tests; the benchmark,
+the independent code review, the record and the changelog entry are done
+once, for the delivery pull request.
+
 Every change to `main` except documentation goes through a pull request that
 Henrik approves. Gate A and gate B prepare a branch for it; neither merges
 anything by itself.

@@ -46,6 +46,106 @@ this branch applies; record `review/records/2026-10-12-apply-review-decisions.md
   `plot_raw_voltage.py`) leave `main` for now; they are kept on the branch
   `main-before-review-2026-10-03`. The unit tests stay (da1bdac).
 
+## Pending: the weeks 10-12 delivery (on `weeks-10-12`, to be dated at the merge into main)
+
+### Fixed
+Branch `clutfix-impulse-rows`, adopted by Henrik on 23 November 2026 (gate B) and
+fast-forwarded into `weeks-10-12`; record `review/records/2026-11-22-clutfix-impulse-rows.md`, memo 55.
+- **The impulse-row removal no longer removes the clutter partner's rows from
+  the plain lagged products.** The plain products (`acfs_e`, fitted above
+  `clutter_cutoff_km`, 150 km in product-v3) lose only the rows of the pulse's
+  own impulses; the clutter-subtracted ones (`acfs_g`) still lose those of the
+  pulse and its partner. Where the masks differ each gets its own weights and
+  solve; new keys `acfs_var_g` (used by `fit_lpi` for the `acfs_g` gates) and
+  `impulse_rows_removed_fraction_e`. Effect with `impulse_rows`: about half the
+  rows removed above 150 km, smaller error bars there, `acfs_g` bit-identical;
+  default products unchanged (7575c82).
+
+### Added
+Product v3 and its final form v3-loo100c20-cf (tag `product-v3.1`); memos 53-55;
+settings and runs in `VERSIONS.md`. Every switch is off by default; the
+benchmark of 407b40b against 5e5e5bc gives 80 of 80 outputs bit-identical
+(`review/records/2026-11-01-benchmark-407b40b.md`).
+- **Fit switches for product v3** (`fit_lpi`, memo 54): `clutter_cutoff_km`
+  (the clutter-subtracted ACF only below it), `range_limits` (the heights of
+  each `range_avg`), `range_avg_rho` and `range_avg_rho_min_km` (the
+  correlated-gate variance of the range average, memos 31 and 36),
+  `fit_select_best`, `fit_restarts`, `max_lag_us` (tried, not used in v3);
+  the fit's Te/Ti bound now comes from the table, and `isr_spec.il_table`
+  takes the grid as arguments, for v3's finer table to Te/Ti 5 (407b40b).
+- **Longer leave-one-out weights** (`weights_width`, memo 54): the number of
+  pulses in the running mean of the variance weights, default 10; v3 uses
+  100 with `weights_exclude_self`, less noisy and still unbiased weights
+  (b671886).
+- **The row cap** (`weights_row_cap`, memo 54): with leave-one-out weights a
+  row's variance is at least its own |m|^2 / cap, so single-pulse
+  interference is weighted down as the variance weights did; v3 uses 20
+  (clean bias within 0.4 % in `weight_bias_mc.py`) (3b52817).
+- **The density scale from the plasma lines** (memo 53):
+  `plasma_line_density_scale.py` takes the constant from the plasma-line
+  picks with outlier rejection (iterative 3-robust-sigma cut in log C), the
+  thermal and magnetic corrections and a block bootstrap, with the digisonde
+  on the same footing (8290a30); `compare_weights.py` compares leave-one-out
+  and variance weights each on its own constant (d940323).
+- **The final product's constants** (`fit_quality`, memo 54): one per day
+  from the plasma lines, 5.95e8 (7 April), 6.36e8 (8 April), 6.24e8 for
+  other days (`DENSITY_CONSTANT_BY_DAY`), replacing the digisonde's 7.15e8;
+  this changes n_e of every product read through `fit_quality.load_fits`
+  unless `constant=` is passed (a2e8a53).
+- **Eclipse analysis** (memo 52): `eclipse_analysis.py` (NmF2, hmF2, Te and
+  Ti at 270-330 km, Te at the shells, 8 against 7 April) (27a2960).
+
+### Process
+- `VERSIONS.md`: the product versions v0 to v3-loo100c20-cf with their
+  memos, commits, runs and viewer exports, and how v3 was optimised
+  (5e5e5bc to e4a13e6).
+- **The analysis scripts in their own folder** (Henrik, 24 November): the 22
+  analysis and evaluation scripts of weeks 7-12, which the pipeline does not
+  import (the `compare_*`, `eclipse_*`, `inject_*` and measure scripts,
+  `range_lag_doppler.py`, `ion_line_fits.py`, `weight_bias_mc.py`, and the
+  others named above), move to `analysis/`, with a README listing each and
+  its memo. Each gets one line that puts the top folder on its import path;
+  otherwise unchanged. The top folder keeps the pipeline (everything
+  `run_analysis.py` imports), `fit_quality.py` (the products' density
+  constants and quality flags), the plasma-line calibration
+  (`plasma_line_picker.py`, `plasma_line_density_scale.py`), which produces
+  those constants, and the tests. The memos' Reproduce sections name commits
+  and tags from before the move, where the scripts are in the top folder.
+  No effect on any output.
+
+## Pending: the weeks 7-9 delivery (pull request, to be dated at the merge)
+
+Record `review/records/2026-10-27-weeks-7-9.md`. Every new behaviour is off
+by default; the benchmark against `main` is in the record.
+
+### Added
+- **Pass tracking of satellite echoes** (Memo 45): `satellites.track` links
+  the catalogue's detections into passes and gives a satellite column to
+  every pulse of a pass, also those the detector missed
+  (`satellite_columns.TrackedDetections`); the satellite unknowns are
+  eliminated pulse by pulse (`outlier_lpi.schur_solve`) so that thousands of
+  columns fit in memory (fd2c4b6).
+- **A lower detection threshold confirmed by tracking** (Memo 48): the
+  detector's `--pfa`; `strong_pfa` marks the detections above the default
+  threshold as strong, and `track_options.min_weak_pulses` keeps a pass of
+  weak detections only when they lie on that many pulses (8b26247).
+- **The pure-plasma control and per-column checks** (Memo 48):
+  `random_columns` (`RandomControlColumns`), `column_checks.py`, the residual
+  of each column's rows (`sat_resid`) and the `RESIDUAL` flag of
+  `fit_quality.py` (5a6a298, 49d7ac8, 01e10b9).
+- **Removal of the impulse-hit rows** (Memo 47): `impulse_rows` removes the
+  lagged products that detected power-line impulses touch (7173173).
+- **Variance weights without the row itself** (Memo 51):
+  `weights_exclude_self` takes each row's variance weight from the other rows
+  of its ten-pulse window. The present weights include the row, which biases
+  every variance-weighted ACF low (17-25 % below 400 km against equal
+  weights) and makes the impulse-row removal biased; leave-one-out weights
+  remove both (67c12a8).
+- Analysis scripts for Memos 45-52: the end-to-end and impulse injections
+  (`end_to_end_injection.py`, `inject_impulses.py`), `change_table.py`,
+  `eclipse_timing.py`, `eclipse_analysis.py`, `weight_bias_mc.py`, and the
+  measure and plot scripts (5edee86 and earlier).
+
 ## 2026-10-12
 
 ### Added

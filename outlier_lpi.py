@@ -27,6 +27,8 @@ import millstone_radar_state as mrs
 from radar_timing import TMM as tmm, T_INJECTION as T_injection
 # design matrix columns for detected satellite echoes
 import satellite_columns as satcol
+# rows touched by impulsive interference
+import impulse_rows as improws
 from raw_reader import RawReader
 
 comm=MPI.COMM_WORLD
@@ -170,6 +172,111 @@ def ols_covariance(Sigma, B, w, unconstrained):
     return C
 
 
+def schur_solve(B, n_p, groups, ms):
+    """
+    The least-squares solution of B x = m when the last columns of B are
+    satellite columns, each nonzero only in the rows of its own pulse.
+
+    The unknowns split into the first n_p (plasma gates and background) and
+    the satellite amplitudes. A satellite column shares rows only with the
+    columns of the same pulse, so the satellite part of the normal matrix is
+    block diagonal, one block per pulse (groups: the satellite column
+    indices, counted from n_p, of each pulse). Eliminating the satellites
+    block by block (the Schur complement) leaves a system of size n_p:
+
+        S   = N_pp - N_ps N_ss^-1 N_sp
+        x_p = S^-1 (y_p - N_ps N_ss^-1 y_s)
+        x_s = N_ss^-1 (y_s - N_sp x_p)
+
+    the same solution as the full normal equations, computed in time that
+    grows with the number of pulses rather than with the cube of the number
+    of satellite columns. The plasma covariance is S^-1 (with invert_normal's
+    handling of unconstrained unknowns); a satellite amplitude's variance is
+    the diagonal of N_ss^-1 + N_ss^-1 N_sp S^-1 N_ps N_ss^-1.
+
+    B   csc design matrix, already weighted (rows divided by sigma)
+    ms  the right-hand sides (weighted), solved together
+    Returns ([x for each m], diagonal of the covariance, unconstrained
+    plasma unknowns).
+    """
+    Bp = B[:, :n_p]
+    Bs = B[:, n_p:]
+    BpH = n.conj(Bp.T)
+    BsH = n.conj(Bs.T).tocsr()
+    Npp = BpH.dot(Bp).toarray()
+    Nps = BpH.dot(Bs).toarray()
+    Nss = BsH.dot(Bs).tocsr()
+    yp = [BpH.dot(m) for m in ms]
+    ys = [BsH.dot(m) for m in ms]
+    n_s = Bs.shape[1]
+    W = n.zeros((n_s, n_p), dtype=n.complex128)
+    Mdiag = n.zeros(n_s)
+    zs = [n.zeros(n_s, dtype=n.complex128) for _ in ms]
+    Minvs = []
+    for g in groups:
+        g = n.asarray(g)
+        M = Nss[g][:, g].toarray()
+        d = n.real(n.diag(M))
+        ok = d > 0
+        Minv = n.zeros(M.shape, dtype=n.complex128)
+        if ok.any():
+            # a pseudo-inverse: two columns of one pulse that are nearly the
+            # same (one satellite twice) would make the block singular
+            Minv[n.ix_(ok, ok)] = n.linalg.pinv(M[n.ix_(ok, ok)], rcond=1e-10, hermitian=True)
+        Minvs.append((g, Minv, ok))
+        W[g] = Minv.dot(n.conj(Nps[:, g].T))
+        Mdiag[g] = n.where(ok, n.real(n.diag(Minv)), n.nan)
+        for z, y in zip(zs, ys):
+            z[g] = Minv.dot(y[g])
+    S = Npp - Nps.dot(W)
+    S = 0.5 * (S + n.conj(S.T))
+    Sp, unconstrained = invert_normal(S)
+    Sp0 = n.nan_to_num(Sp)
+    xs = []
+    for z, y in zip(zs, yp):
+        xp = Sp.dot(y - Nps.dot(z))
+        xsat = z - W.dot(n.nan_to_num(xp))
+        xsat[n.isnan(Mdiag)] = n.nan
+        xs.append(n.concatenate([xp, xsat]))
+    var_s = Mdiag + n.real(n.sum(W.dot(Sp0) * n.conj(W), axis=1))
+    var = n.concatenate([n.real(n.diag(Sp)), var_s])
+    return xs, var, unconstrained
+
+
+def column_residuals(AA, Sinv, xhat, mm, first_sat, rel=1e-3):
+    """
+    The residual power left in each satellite column's own rows after the
+    solve: for column c, the mean over the rows where the column is not
+    negligible (above rel times its largest entry: the rows its echo
+    reaches) of |m - A x|^2 / sigma^2. The measurement mm is already divided
+    by sigma (Sinv the diagonal of 1/sigma, AA the unweighted design matrix,
+    rows as solved, so rows removed by the outlier tests are not counted).
+    sigma is each row's weight level: with variance weights the running mean
+    of |m|^2 over ten pulses, which includes the echo's own power. So the
+    value is the residual over the row's local power, not over the noise:
+    below 1 where the echo was removed, and an echo the column does not
+    describe (wrong delay or Doppler, or not a satellite's shape) raises it
+    above 1 only when the echo is confined to a few of those ten pulses; an
+    echo left on a long pass stays near 1. NaN for a column without rows.
+    """
+    x = n.nan_to_num(xhat)
+    res = mm - Sinv.dot(AA.dot(x))
+    Ssat = AA[:, first_sat:].tocsc()
+    n_s = Ssat.shape[1]
+    if Ssat.nnz == 0:
+        return n.full(n_s, n.nan)
+    col = n.repeat(n.arange(n_s), n.diff(Ssat.indptr))
+    a = n.abs(Ssat.data)
+    cmax = n.zeros(n_s)
+    n.maximum.at(cmax, col, a)
+    keep = a > rel * cmax[col]
+    r2 = n.abs(res[Ssat.indices[keep]]) ** 2
+    num = n.bincount(col[keep], weights=r2, minlength=n_s)
+    cnt = n.bincount(col[keep], minlength=n_s)
+    with n.errstate(invalid="ignore", divide="ignore"):
+        return n.where(cnt > 0, num / cnt, n.nan)
+
+
 def design_block(amb_rows, background_column):
     """
     One pulse's rows of the design matrix for one lag: the ambiguity function
@@ -291,6 +398,36 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
               # process that is the same at every range (Virtanen et al.,
               # 2014). False leaves it out.
               background_column=True,
+              # remove the lagged products that impulsive interference touches
+              # (impulse_rows.py; memo 21's power-line sparks): every row of
+              # every lag whose samples, widened by the filter and by the lag,
+              # touch a detected impulse, from the measurement, the theory
+              # matrix and the satellite columns alike: for the plain lagged
+              # products the impulses of the pulse itself, for the clutter
+              # subtracted ones also those of the pulse it is differenced
+              # against (impulse_rows.touched_masks). The removed rows are
+              # left out of the variance weights too. False leaves the
+              # inversion as it was.
+              impulse_rows=False,
+              # leave each row's own |m|^2 out of the running mean that gives
+              # its variance weight (impulse_rows.masked_running_sigma,
+              # exclude_self): removes the pull towards zero of weights
+              # estimated from the row itself, which grows when rows are
+              # removed (Memo 51). False leaves the weights as they were.
+              weights_exclude_self=False,
+              # the number of pulses in the running mean of |m|^2 that gives
+              # the variance weights. A longer window gives less noisy
+              # weights (with the row left out, noise in the weights costs
+              # precision, not bias) but follows a changing background more
+              # slowly. 10 leaves the weights as they were.
+              weights_width=10,
+              # with leave-one-out weights: a row's variance is at least its
+              # own |m|^2 divided by this (impulse_rows.row_cap), so a row
+              # carrying interference far above its neighbours' level is
+              # weighted down, as the variance weights did through the row's
+              # own term; a clean row almost never reaches it. None leaves
+              # the weights as they were.
+              weights_row_cap=None,
               ):
     if weighting not in WEIGHTINGS:
         raise ValueError("unknown weighting %r, expected one of %s"%(weighting,WEIGHTINGS))
@@ -421,6 +558,15 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         S=[]
         mgs=[]
         mes=[]
+        # per lag, for every entry of A[li], the rows touched by an impulse
+        # (impulse_rows): hits for the clutter subtracted products (impulses
+        # of the pulse or of its partner), hits_e for the plain products
+        # (impulses of the pulse itself); the impulse samples found, and the
+        # samples searched
+        hits=[]
+        hits_e=[]
+        n_imp_samples=0
+        n_imp_searched=0
 #        sigmas=[]
         idxms=[]
         rmins=[]
@@ -454,6 +600,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             S.append([])
             mgs.append([])
             mes.append([])
+            hits.append([])
+            hits_e.append([])
         n_good_estimates=0
 
         avg_pwr=0.0
@@ -594,6 +742,19 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
             # normalize tx pwr
             z_tx=z_tx/n.sqrt(n.sum(n.real(z_tx*n.conj(z_tx))))
+            if impulse_rows:
+                # the impulses of this pulse and of the one it is differenced
+                # against, found in the raw voltage of the echo window (both
+                # have the same code, so the same window), and the filtered
+                # samples they reach: those of this pulse's own impulses for
+                # the plain products, those of either pulse's for the clutter
+                # subtracted products
+                hot=improws.detect(z_echo,gc,last_echo)
+                hot1=improws.detect(z_echo1,gc,last_echo) if next_key is not None else None
+                n_imp_samples+=int(n.sum(hot if hot1 is None else (hot|hot1)))
+                n_imp_searched+=max(min(last_echo,len(z_echo))-gc,0)*(2 if next_key is not None else 1)
+                touched_e,touched=improws.touched_masks(hot,hot1,filter_len)
+
             z_echo[last_echo:10000]=0.0
             z_echo1[last_echo:10000]=0.0
 
@@ -688,6 +849,10 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
                     mgs[li].append(measg[m0:m1])
                     mes[li].append(mease[m0:m1])
+                    if impulse_rows:
+                        hits[li].append(improws.hit_rows(touched,lags[li+ai],decim,m0,m1))
+                        hits_e[li].append(hits[li][-1] if touched_e is touched else
+                                          improws.hit_rows(touched_e,lags[li+ai],decim,m0,m1))
                     A[li].append(TM)
                     S[li].append([(sat_col0+si,satcol.template_lag_column(st,lags[li+ai],decim,m0,m1)) for si,st in enumerate(sat_templates)])
             t1=time.time()
@@ -702,22 +867,45 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         # append the satellite columns, now that their number is known. Each
         # column is nonzero only in the rows of its own pulse.
         n_sat=len(sat_cols)
+        # the satellite columns of each lag as one sparse block, assembled
+        # from its nonzero entries (the rows of each pulse follow one another,
+        # n_meas per pulse) and appended to the design matrix at the solve.
+        # The same matrix as appending them to every pulse's block, without
+        # the per-pulse column index of length n_sat, which with tracked
+        # passes (thousands of columns) took gigabytes.
+        SS=[None]*n_lags
         if n_sat > 0:
             print("%d satellite columns"%(n_sat))
             for li in range(n_lags):
+                sdata,srow,scol=[],[],[]
                 for pi in range(len(A[li])):
-                    cols=S[li][pi]
-                    if len(cols) > 0:
-                        sdata=n.concatenate([col for _,col in cols])
-                        srow=n.tile(n.arange(n_meas,dtype=int),len(cols))
-                        scol=n.repeat(n.array([ci for ci,_ in cols],dtype=int),n_meas)
-                        SM=sparse.csc_matrix((sdata,(srow,scol)),shape=(n_meas,n_sat),dtype=n.complex64)
-                    else:
-                        SM=sparse.csc_matrix((n_meas,n_sat),dtype=n.complex64)
-                    A[li][pi]=sparse.hstack([A[li][pi],SM],format="csc")
+                    for ci,col in S[li][pi]:
+                        sdata.append(col)
+                        srow.append(pi*n_meas+n.arange(n_meas,dtype=n.int64))
+                        scol.append(n.full(n_meas,ci,dtype=n.int64))
+                    S[li][pi]=None
+                if sdata:
+                    SS[li]=sparse.csc_matrix((n.concatenate(sdata),(n.concatenate(srow),n.concatenate(scol))),
+                                             shape=(len(A[li])*n_meas,n_sat),dtype=n.complex64)
+                else:
+                    SS[li]=sparse.csc_matrix((len(A[li])*n_meas,n_sat),dtype=n.complex64)
         sat_amp_e=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_g=n.full([n_sat,n_lags],n.nan,dtype=n.complex64)
         sat_amp_var=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # residual power in each column's own rows after the solve
+        # (column_residuals), plain products
+        sat_resid=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # with outlier rejection and satellite columns: the fraction of rows
+        # each test removes per lag (the ratio test, the power cut, either),
+        # and the fraction of each column's own rows removed
+        outl_ratio=n.full(n_lags,n.nan,dtype=n.float32)
+        outl_power=n.full(n_lags,n.nan,dtype=n.float32)
+        outl_any=n.full(n_lags,n.nan,dtype=n.float32)
+        sat_rows_rejected=n.full([n_sat,n_lags],n.nan,dtype=n.float32)
+        # per lag, the fraction of rows removed for impulses (impulse_rows),
+        # from the clutter subtracted and from the plain products
+        imp_removed=n.full(n_lags,n.nan,dtype=n.float32)
+        imp_removed_e=n.full(n_lags,n.nan,dtype=n.float32)
 
         acfs_g=n.zeros([rmax,n_lags],dtype=n.complex64)
         acfs_e=n.zeros([rmax,n_lags],dtype=n.complex64)
@@ -731,6 +919,11 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
 
         acfs_var=n.zeros([rmax,n_lags],dtype=n.float32)
         acfs_var[:,:]=n.nan
+        # the variance of acfs_g where it has its own solve (impulse rows
+        # removed with different masks; acfs_var is then that of acfs_e), and
+        # the lags where it has
+        acfs_var_g=n.full([rmax,n_lags],n.nan,dtype=n.float32)
+        split_lag=n.zeros(n_lags,dtype=bool)
 
         if noise_dc != "window" and len(z_dc_samples) > 0:
             # one DC offset for the period, the median over all its pulses of the
@@ -749,6 +942,35 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
         alpha=(n.median(bg_plus_inj_samples)-n.median(bg_samples))/T_injection
         T_sys=noise/alpha
 
+        def store_solution(li,n_pl,role,xs,var,AA,Sinv,ms):
+            """
+            Write one solve's estimates of lag li for the products it was
+            solved for: role "eg" both (one solve, as always before), "e" the
+            plain products only, "g" the clutter subtracted ones only. xs and
+            ms: the estimates and the weighted measurements, in role's order;
+            var: the diagonal of the error covariance. acfs_var, the
+            satellite amplitudes' variance and the column residuals are those
+            of the plain products; a separate solve of the clutter subtracted
+            products writes its variance to acfs_var_g.
+            """
+            x=dict(zip(role,xs))
+            m=dict(zip(role,ms))
+            if "e" in x:
+                acfs_e[ rmins[li]:rmax, li ]=x["e"][0:n_pl]
+                noise_e[li]=x["e"][n_pl] if background_column else n.nan
+                acfs_var[ rmins[li]:rmax, li ]=var[0:n_pl]
+                if n_sat > 0:
+                    sat_amp_e[:,li]=x["e"][(n_pl+n_bg):]
+                    sat_amp_var[:,li]=var[(n_pl+n_bg):]
+                    sat_resid[:,li]=column_residuals(AA,Sinv,x["e"],m["e"],n_pl+n_bg)
+            if "g" in x:
+                acfs_g[ rmins[li]:rmax, li ]=x["g"][0:n_pl]
+                noise_g[li]=x["g"][n_pl] if background_column else n.nan
+                if n_sat > 0:
+                    sat_amp_g[:,li]=x["g"][(n_pl+n_bg):]
+                if "e" not in x:
+                    acfs_var_g[ rmins[li]:rmax, li ]=var[0:n_pl]
+
         for li in range(n_lags):
             print(li)
             if len(A[li]) < 16:
@@ -759,6 +981,8 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
             
             
             AA=sparse.vstack(A[li])
+            if n_sat > 0:
+                AA=sparse.hstack([AA,SS[li]],format="csc")
             #print(AA.shape)
             mm_g=n.concatenate(mgs[li])
             mm_e=n.concatenate(mes[li])
@@ -810,17 +1034,48 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     # (~1e-7 of the largest value) swamps every pulse's weight
                     # in the rows a bright echo reaches, clean pulses included
                     localized_sigma=localized_sigma.astype(n.float64)
-                wf=n.repeat(1/10,10)
+                wf=n.repeat(1/weights_width,weights_width)
                 WF=fft(wf,localized_sigma.shape[0])
-                for ri in range(mm_em.shape[1]):
-                    # we need to wrap around, to avoid too low values.
-                    localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-5)
+                p_self=localized_sigma.copy() if weights_row_cap is not None else None
+                # the plain and the clutter subtracted products keep different
+                # rows (impulse rows removed with different masks): each then
+                # gets its own weights and its own solve
+                split=False
+                if impulse_rows:
+                    # the rows an impulse touches, removed below; the running
+                    # mean of the weights is taken over the other rows. hit
+                    # (the impulses of the pulse or of its partner) for the
+                    # clutter subtracted products, hit_e (the pulse's own) for
+                    # the plain ones
+                    hit=n.array(hits[li],dtype=bool).reshape(n_ipp,n_meas)
+                    hit_e=n.array(hits_e[li],dtype=bool).reshape(n_ipp,n_meas)
+                    split=not n.array_equal(hit,hit_e)
+                    if split:
+                        localized_sigma_e=improws.masked_running_sigma(localized_sigma,~hit_e,weights_width,exclude_self=weights_exclude_self)
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,~hit,weights_width,exclude_self=weights_exclude_self)
+                    imp_removed[li]=n.mean(hit)
+                    imp_removed_e[li]=n.mean(hit_e)
+                elif weights_exclude_self:
+                    localized_sigma=improws.masked_running_sigma(localized_sigma,n.ones(localized_sigma.shape,dtype=bool),weights_width,exclude_self=True)
+                else:
+                    for ri in range(mm_em.shape[1]):
+                        # we need to wrap around, to avoid too low values.
+                        localized_sigma[:,ri]=n.roll(n.sqrt(ifft(WF*fft(localized_sigma[:,ri])).real),-(weights_width//2))
+                if weights_row_cap is not None:
+                    localized_sigma=improws.row_cap(localized_sigma,p_self,weights_row_cap)
+                    if split:
+                        localized_sigma_e=improws.row_cap(localized_sigma_e,p_self,weights_row_cap)
 
                 # make sure we don't have a division by zero
                 msig=n.nanmedian(localized_sigma)
                 if msig<0:
                     msig=1.0
                 localized_sigma[localized_sigma<msig]=msig
+                if split:
+                    msig_e=n.nanmedian(localized_sigma_e)
+                    if msig_e<0:
+                        msig_e=1.0
+                    localized_sigma_e[localized_sigma_e<msig_e]=msig_e
 
 
                 if False:
@@ -842,6 +1097,18 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     plt.show()
 
 
+                rejected_rows=None
+                if outlier_rejection and satellite_detections is not None:
+                    # what each test removes, for the comparison with the
+                    # satellite columns (written only with them)
+                    fin=n.isfinite(mm_em)&n.isfinite(mm_gm)
+                    rej_ratio=((ratio_test>10)|(ratio_test_g>10))&fin
+                    rej_power=(localized_sigma>100*msig)&fin
+                    nfin=max(int(fin.sum()),1)
+                    outl_ratio[li]=rej_ratio.sum()/nfin
+                    outl_power[li]=rej_power.sum()/nfin
+                    outl_any[li]=(rej_ratio|rej_power).sum()/nfin
+                    rejected_rows=n.ravel(rej_ratio|rej_power)
                 if outlier_rejection:
                     # is this threshold too high?
                     # maybe 6-7 might still be possible.
@@ -849,8 +1116,15 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                     mm_gm[ratio_test_g > 10]=n.nan
 
                     # these will be shit no matter what
-                    mm_em[localized_sigma > 100*msig]=n.nan
+                    if split:
+                        mm_em[localized_sigma_e > 100*msig_e]=n.nan
+                    else:
+                        mm_em[localized_sigma > 100*msig]=n.nan
                     mm_gm[localized_sigma > 100*msig]=n.nan
+
+                if impulse_rows:
+                    mm_em[hit_e]=n.nan
+                    mm_gm[hit]=n.nan
 
                 ok_count+=n.sum((n.isnan(mm_em)!=True)*(n.isnan(mm_gm)!=True),axis=0)
                 meas_count+=n_ipp
@@ -868,127 +1142,157 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 local_sigma=n.ravel(localized_sigma).copy()
                 sigma_lp_est=row_sigma(localized_sigma,msig,weighting)
                 sigma_lp_est.shape=(len(mm_g),)
+                if split:
+                    local_sigma_e=n.ravel(localized_sigma_e).copy()
+                    sigma_lp_est_e=row_sigma(localized_sigma_e,msig_e,weighting)
+                    sigma_lp_est_e.shape=(len(mm_e),)
 
                 mm_gm.shape=(len(mm_g),)
                 mm_em.shape=(len(mm_e),)
                 mm_g=mm_gm
                 mm_e=mm_em
 
-            mm_g=mm_g/sigma_lp_est
-            mm_e=mm_e/sigma_lp_est
+            # the solves: one for both kinds of product when they keep the
+            # same rows with the same weights (as always before); otherwise
+            # one for the plain products, with the rows and weights of their
+            # own impulse mask, and one for the clutter subtracted products,
+            # with those of the union mask. Each pass: (the products it
+            # estimates, their weighted measurements, row sigma, local level,
+            # median level)
+            if split:
+                split_lag[li]=True
+                passes=[("e",[mm_e/sigma_lp_est_e],sigma_lp_est_e,local_sigma_e,msig_e),
+                        ("g",[mm_g/sigma_lp_est],sigma_lp_est,local_sigma,msig)]
+            else:
+                passes=[("eg",[mm_e/sigma_lp_est,mm_g/sigma_lp_est],sigma_lp_est,local_sigma,msig)]
+            AA_all=AA
 
-            gidx = n.where( (n.isnan(mm_e)==False) & (n.isnan(mm_g)==False) & (n.isnan(sigma_lp_est) == False) )[0]
-            print("%d/%d measurements good"%(len(gidx),len(mm_g)))
+            if rejected_rows is not None and n_sat > 0:
+                # per satellite column, the fraction of its own rows (where
+                # it is above 1e-3 of its peak) the outlier tests removed
+                Ssat=AA_all[:,AA_all.shape[1]-n_sat:].tocsc()
+                if Ssat.nnz > 0:
+                    col=n.repeat(n.arange(n_sat),n.diff(Ssat.indptr))
+                    a=n.abs(Ssat.data)
+                    cmax=n.zeros(n_sat)
+                    n.maximum.at(cmax,col,a)
+                    keep=a>1e-3*cmax[col]
+                    num=n.bincount(col[keep],weights=rejected_rows[Ssat.indices[keep]],minlength=n_sat)
+                    cnt=n.bincount(col[keep],minlength=n_sat)
+                    sat_rows_rejected[:,li]=n.where(cnt>0,num/n.maximum(cnt,1),n.nan)
 
-            # take outliers and bad measurements
-            AA=AA[gidx,:]
-            mm_g=mm_g[gidx]
-            mm_e=mm_e[gidx]
-            
-            # at this point, we could add regularization to reduce range resolution on the top-side
-            #
-            # acf(rg[i])**rg[i]**2.0 = acf(rg[i+1])**rg[i+1]**2.0
-            #
-            # Something like this:
-            # acf(rg[i]) - acf(rg[i+1])*(rg[i+1]**2.0/rg[i]**2.0) = 0
-            #
-            # n_rgs_this_lag = rmax-rmins[li]
-            #
+            for role,ms,sigma_lp_est,local_sigma,msig in passes:
+                good=(n.isnan(sigma_lp_est)==False)
+                for m in ms:
+                    good=good&(n.isnan(m)==False)
+                gidx=n.where(good)[0]
+                print("%d/%d measurements good (%s)"%(len(gidx),len(ms[0]),role))
 
-            
-            srow=n.arange(len(gidx),dtype=int)
-            scol=n.arange(len(gidx),dtype=int)
-            sdata=1/sigma_lp_est[gidx]
+                # take outliers and bad measurements
+                AA=AA_all[gidx,:]
+                ms=[m[gidx] for m in ms]
 
-            Sinv = sparse.csc_matrix( (sdata, (srow,scol)) ,shape=(len(gidx),len(gidx)))
+                # at this point, we could add regularization to reduce range resolution on the top-side
+                #
+                # acf(rg[i])**rg[i]**2.0 = acf(rg[i+1])**rg[i+1]**2.0
+                #
+                # Something like this:
+                # acf(rg[i]) - acf(rg[i+1])*(rg[i+1]**2.0/rg[i]**2.0) = 0
+                #
+                # n_rgs_this_lag = rmax-rmins[li]
+                #
 
+                srow=n.arange(len(gidx),dtype=int)
+                scol=n.arange(len(gidx),dtype=int)
+                sdata=1/sigma_lp_est[gidx]
 
-            if len(gidx) < n_rg:
-                print("not enough measurements. skipping")
-                continue
-                
-            
+                Sinv = sparse.csc_matrix( (sdata, (srow,scol)) ,shape=(len(gidx),len(gidx)))
 
-            try:
-                t0=time.time()
-                # scale the design matrix by 1/sigma once, rather than applying
-                # Sinv on each side of every product below. With B = Sinv A,
-                # B^H B is the same Fisher information matrix A^H Sinv^2 A and
-                # B^H mm the same A^H Sinv^2 m, because mm already carries one
-                # factor of 1/sigma and Sinv is real and diagonal.
-                B=Sinv.dot(AA)
-                if n_sat > 0:
-                    # a bright satellite's rows are weighted down by orders of
-                    # magnitude, which leaves the columns of B on very different
-                    # scales and the normal matrix too ill conditioned to invert
-                    # in double precision. Scale every column to unit norm,
-                    # solve, and scale back: the same estimate, computed stably.
-                    col_norm=n.sqrt(n.asarray(B.multiply(B.conj()).real.sum(axis=0))).ravel()
-                    col_norm[(col_norm==0) | ~n.isfinite(col_norm)]=1.0
-                    if li in (0,n_lags//2):
-                        BTu=n.conj(B.T)
-                        print("lag %d normal matrix condition number: %.2e as it was, %.2e with the columns scaled"%(
-                            li,n.linalg.cond(BTu.dot(B).toarray()),
-                            n.linalg.cond((BTu.dot(B).toarray())/n.outer(col_norm,col_norm))))
-                    B=B.dot(sparse.diags(1.0/col_norm))
-                # (Sinv A)^H
-                BT=n.conj(B.T)
-                # A^H S^{-1} S^{-1} A (Fisher information matrix)
-                ATA=BT.dot(B).toarray()
+                if len(gidx) < n_rg:
+                    print("not enough measurements. skipping")
+                    continue
 
-                # A^H \Sigma^{-1} m_g with ground clutter mitigation
-                # note that 1/sigma is taken earlier when forming mm_g and mm_e
-                # here we add a 1/sigma to get 1/sigma^2 on the diagonal of \Sigma^{-1}
-                ATm_g=BT.dot(mm_g)
-                # A^H \Sigma^{-1} m_e no ground clutter mitigation
-                # note that 1/sigma is taken earlier when forming mm_g and mm_e
-                ATm_e=BT.dot(mm_e)
-
-                # error covariance, NaN for unknowns no measurement constrains
-                Sigma,unconstrained=invert_normal(ATA)
-                if len(unconstrained)>0:
-                    print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,len(unconstrained),unconstrained[:8].tolist()))
-
-                # ML estimate for ACF lag without ground clutter mitigation measures in place
-                xhat_e=n.dot(Sigma,ATm_e)
-
-                # ML estimate for ACF lag with ground clutter mitigation measures            
-                xhat_g=n.dot(Sigma,ATm_g)
-
-                if weighting=="equal":
-                    # the estimate is ordinary least squares, but the rows do
-                    # not share one noise level: the covariance from each
-                    # row's local level (in the same scaled unknowns as Sigma)
-                    Sigma=ols_covariance(Sigma,B,(local_sigma[gidx]/msig)**2.0,unconstrained)
-
-                if n_sat > 0:
-                    # back from the scaled unknowns
-                    xhat_e=xhat_e/col_norm
-                    xhat_g=xhat_g/col_norm
-                    Sigma=Sigma/n.outer(col_norm,col_norm)
-
-                t1=time.time()
-                t_simple=t1-t0        
-                print("simple %1.2f"%(t_simple))
                 # unknowns: the plasma gates, the background, then the satellites
                 n_pl=rmax-rmins[li]
-                acfs_e[ rmins[li]:rmax, li ]=xhat_e[0:n_pl]
-                acfs_g[ rmins[li]:rmax, li ]=xhat_g[0:n_pl]
-                if background_column:
-                    noise_e[li]=xhat_e[n_pl]
-                    noise_g[li]=xhat_g[n_pl]
-                else:
-                    noise_e[li]=n.nan
-                    noise_g[li]=n.nan
+                if n_sat > 0 and weighting=="variance":
+                    # the satellite unknowns eliminated pulse by pulse
+                    # (schur_solve): the same solution as the full solve below,
+                    # needed when tracked passes give thousands of columns
+                    try:
+                        t0=time.time()
+                        B=Sinv.dot(AA).tocsc()
+                        groups={}
+                        for ci,sc in enumerate(sat_cols):
+                            groups.setdefault(sc[0],[]).append(ci)
+                        xs,dvar,unconstrained=schur_solve(B,n_pl+n_bg,list(groups.values()),ms)
+                        if len(unconstrained)>0:
+                            print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,len(unconstrained),unconstrained[:8].tolist()))
+                        print("schur %1.2f"%(time.time()-t0))
+                        store_solution(li,n_pl,role,xs,dvar,AA,Sinv,ms)
+                    except:
+                        traceback.print_exc()
+                        print("something went wrong.")
+                    continue
 
-                acfs_var[ rmins[li]:rmax, li ] = n.diag(Sigma.real)[0:n_pl]
-                if n_sat > 0:
-                    sat_amp_e[:,li]=xhat_e[(n_pl+n_bg):]
-                    sat_amp_g[:,li]=xhat_g[(n_pl+n_bg):]
-                    sat_amp_var[:,li]=n.diag(Sigma.real)[(n_pl+n_bg):]
-            except:
-                traceback.print_exc()
-                print("something went wrong.")
+                try:
+                    t0=time.time()
+                    # scale the design matrix by 1/sigma once, rather than applying
+                    # Sinv on each side of every product below. With B = Sinv A,
+                    # B^H B is the same Fisher information matrix A^H Sinv^2 A and
+                    # B^H mm the same A^H Sinv^2 m, because mm already carries one
+                    # factor of 1/sigma and Sinv is real and diagonal.
+                    B=Sinv.dot(AA)
+                    if n_sat > 0:
+                        # a bright satellite's rows are weighted down by orders of
+                        # magnitude, which leaves the columns of B on very different
+                        # scales and the normal matrix too ill conditioned to invert
+                        # in double precision. Scale every column to unit norm,
+                        # solve, and scale back: the same estimate, computed stably.
+                        col_norm=n.sqrt(n.asarray(B.multiply(B.conj()).real.sum(axis=0))).ravel()
+                        col_norm[(col_norm==0) | ~n.isfinite(col_norm)]=1.0
+                        if li in (0,n_lags//2):
+                            BTu=n.conj(B.T)
+                            print("lag %d normal matrix condition number: %.2e as it was, %.2e with the columns scaled"%(
+                                li,n.linalg.cond(BTu.dot(B).toarray()),
+                                n.linalg.cond((BTu.dot(B).toarray())/n.outer(col_norm,col_norm))))
+                        B=B.dot(sparse.diags(1.0/col_norm))
+                    # (Sinv A)^H
+                    BT=n.conj(B.T)
+                    # A^H S^{-1} S^{-1} A (Fisher information matrix)
+                    ATA=BT.dot(B).toarray()
+
+                    # A^H \Sigma^{-1} m for each right-hand side (plain and/or
+                    # ground clutter mitigated). note that 1/sigma is taken
+                    # earlier when forming the measurements; here we add a
+                    # 1/sigma to get 1/sigma^2 on the diagonal of \Sigma^{-1}
+                    ATms=[BT.dot(m) for m in ms]
+
+                    # error covariance, NaN for unknowns no measurement constrains
+                    Sigma,unconstrained=invert_normal(ATA)
+                    if len(unconstrained)>0:
+                        print("lag %d: %d unknowns unconstrained (%s), left NaN"%(li,len(unconstrained),unconstrained[:8].tolist()))
+
+                    # ML estimates of the ACF lag
+                    xs=[n.dot(Sigma,ATm) for ATm in ATms]
+
+                    if weighting=="equal":
+                        # the estimate is ordinary least squares, but the rows do
+                        # not share one noise level: the covariance from each
+                        # row's local level (in the same scaled unknowns as Sigma)
+                        Sigma=ols_covariance(Sigma,B,(local_sigma[gidx]/msig)**2.0,unconstrained)
+
+                    if n_sat > 0:
+                        # back from the scaled unknowns
+                        xs=[x/col_norm for x in xs]
+                        Sigma=Sigma/n.outer(col_norm,col_norm)
+
+                    t1=time.time()
+                    t_simple=t1-t0
+                    print("simple %1.2f"%(t_simple))
+                    store_solution(li,n_pl,role,xs,n.diag(Sigma.real),AA,Sinv,ms)
+                except:
+                    traceback.print_exc()
+                    print("something went wrong.")
 
         if n_good_estimates > 0:
             print("saving")
@@ -1047,6 +1351,33 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["weighting"]=weighting
             if not background_column:
                 ho["background_column"]=False
+            if weights_exclude_self:
+                ho["weights_exclude_self"]=True
+            if weights_width!=10:
+                ho["weights_width"]=weights_width
+            if weights_row_cap is not None:
+                ho["weights_row_cap"]=weights_row_cap
+            if impulse_rows:
+                # the rows removed for impulses: per lag, the fraction of the
+                # period's rows; the fraction of the echo-window samples found
+                # to be impulses; and the detection settings
+                ho["impulse_rows"]=True
+                ho["impulse_rows_removed_fraction"]=imp_removed
+                # the same for the plain products, which lose only the rows
+                # of the pulse's own impulses (the key above counts those of
+                # the pulse or its partner, removed from the clutter
+                # subtracted products); and, where the two kept different
+                # rows, the variance of acfs_g from its own solve (acfs_var
+                # is then that of acfs_e)
+                ho["impulse_rows_removed_fraction_e"]=imp_removed_e
+                if split_lag.any():
+                    # at the lags solved once for both, the one variance
+                    acfs_var_g[:,~split_lag]=acfs_var[:,~split_lag]
+                    ho["acfs_var_g"]=acfs_var_g
+                ho["impulse_sample_fraction"]=n_imp_samples/max(n_imp_searched,1)
+                ho["impulse_thresh"]=improws.THRESH
+                ho["impulse_guard"]=improws.GUARD
+                ho["impulse_window"]=improws.WINDOW
             if satellite_detections is not None:
                 # one entry per satellite column: the pulse, and the delay
                 # (samples, relative to the transmit template) and Doppler (Hz)
@@ -1061,6 +1392,14 @@ def lpi_files(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09
                 ho["sat_amp_e"]=sat_amp_e
                 ho["sat_amp_g"]=sat_amp_g
                 ho["sat_amp_var"]=sat_amp_var
+                # the residual power in each column's own rows after the
+                # solve, over the noise (about 1 where the echo was removed)
+                ho["sat_resid"]=sat_resid
+                if outlier_rejection:
+                    ho["outlier_ratio_fraction"]=outl_ratio
+                    ho["outlier_power_fraction"]=outl_power
+                    ho["outlier_any_fraction"]=outl_any
+                    ho["sat_rows_rejected"]=sat_rows_rejected
                 ho["satellite_template"]=satellite_template
                 if len(sat_avg_tx) > 0:
                     # per code: pulses averaged, and their scatter about the average
