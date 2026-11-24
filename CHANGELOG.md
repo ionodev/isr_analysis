@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-preview (unreleased)
+## 0.1.0-preview (2026-11-24)
 
 The first preview release of this fork of
 [jvierine/isr_analysis](https://github.com/jvierine/isr_analysis).
@@ -17,6 +17,8 @@ The first preview release of this fork of
 - Fit options: per-band range averaging with correlated gate errors, the
   clutter-subtracted ACF below a cutoff, a wider theory table
   (`tools/make_table.py`), restarts and best-start selection.
+- Export to the [RUISDAP](https://github.com/jvierine/ruisdap) web viewer:
+  the pipeline step `ruisdap_export` and `tools/export_ruisdap.py`.
 - Quality flags and density scaling of the fits (`pipeline/fit_quality.py`);
   the density scale from the plasma lines (`calibration/`).
 - Example configurations, `requirements.txt`, a user guide and a
