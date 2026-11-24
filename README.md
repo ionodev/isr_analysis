@@ -5,9 +5,7 @@ raw receiver voltage to profiles of electron density, electron and ion
 temperature and ion velocity. Satellite echoes and power-line interference are
 removed inside the lag-profile inversion.
 
-Python, parallel with MPI; reads Digital RF recordings and writes HDF5. A fork
-of Juha Vierinen's [isr_analysis](https://github.com/jvierine/isr_analysis),
-extended in a student project at UiT The Arctic University of Norway.
+Python, parallel with MPI; reads Digital RF recordings and writes HDF5.
 
 [User guide](docs/USER_GUIDE.md) ·
 [Configuration reference](docs/CONFIGURATION.md) ·
@@ -58,13 +56,13 @@ Tests: `python3 -m pytest tests`.
 |---|---|
 | `pipeline/` | the modules `run_analysis.py` uses |
 | `calibration/` | the density scale from the plasma lines |
-| `analysis/` | evaluation and figure scripts (not part of the pipeline; [README](analysis/README.md)) |
+| `analysis/` | evaluation and figure scripts |
 | `plotting/` | diagnostic plots |
 | `tests/` | unit tests |
 | `tools/` | environment setup, the wider theory table, the regression benchmark |
 | `config/` | example configurations |
 | `docs/` | the user guide, the configuration reference, the analysis-server guide |
-| `syisr/`, `crates/` | Juha Vierinen's SYISR analyses and Rust range–Doppler estimator (below) |
+| `syisr/`, `crates/` | SYISR analyses and Rust range–Doppler estimator |
 
 ## Documentation
 
@@ -75,8 +73,6 @@ Tests: `python3 -m pytest tests`.
 - [Running on the analysis server](docs/appendix_analysis_guide.tex)
 
 ## SYISR and Rust range–Doppler processing
-
-From [jvierine/isr_analysis](https://github.com/jvierine/isr_analysis):
 
 The Rust [range–Doppler estimator](crates/range-doppler) handles configurable
 within-pulse spectra, overlapping fast-time gates, UTC integration windows and
