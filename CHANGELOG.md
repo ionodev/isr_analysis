@@ -61,6 +61,45 @@ fast-forwarded into `weeks-10-12`; record `review/records/2026-11-22-clutfix-imp
   rows removed above 150 km, smaller error bars there, `acfs_g` bit-identical;
   default products unchanged (7575c82).
 
+### Added
+Product v3 and its final form v3-loo100c20-cf (tag `product-v3.1`); memos 53-55;
+settings and runs in `VERSIONS.md`. Every switch is off by default; the
+benchmark of 407b40b against 5e5e5bc gives 80 of 80 outputs bit-identical
+(`review/records/2026-11-01-benchmark-407b40b.md`).
+- **Fit switches for product v3** (`fit_lpi`, memo 54): `clutter_cutoff_km`
+  (the clutter-subtracted ACF only below it), `range_limits` (the heights of
+  each `range_avg`), `range_avg_rho` and `range_avg_rho_min_km` (the
+  correlated-gate variance of the range average, memos 31 and 36),
+  `fit_select_best`, `fit_restarts`, `max_lag_us` (tried, not used in v3);
+  the fit's Te/Ti bound now comes from the table, and `isr_spec.il_table`
+  takes the grid as arguments, for v3's finer table to Te/Ti 5 (407b40b).
+- **Longer leave-one-out weights** (`weights_width`, memo 54): the number of
+  pulses in the running mean of the variance weights, default 10; v3 uses
+  100 with `weights_exclude_self`, less noisy and still unbiased weights
+  (b671886).
+- **The row cap** (`weights_row_cap`, memo 54): with leave-one-out weights a
+  row's variance is at least its own |m|^2 / cap, so single-pulse
+  interference is weighted down as the variance weights did; v3 uses 20
+  (clean bias within 0.4 % in `weight_bias_mc.py`) (3b52817).
+- **The density scale from the plasma lines** (memo 53):
+  `plasma_line_density_scale.py` takes the constant from the plasma-line
+  picks with outlier rejection (iterative 3-robust-sigma cut in log C), the
+  thermal and magnetic corrections and a block bootstrap, with the digisonde
+  on the same footing (8290a30); `compare_weights.py` compares leave-one-out
+  and variance weights each on its own constant (d940323).
+- **The final product's constants** (`fit_quality`, memo 54): one per day
+  from the plasma lines, 5.95e8 (7 April), 6.36e8 (8 April), 6.24e8 for
+  other days (`DENSITY_CONSTANT_BY_DAY`), replacing the digisonde's 7.15e8;
+  this changes n_e of every product read through `fit_quality.load_fits`
+  unless `constant=` is passed (a2e8a53).
+- **Eclipse analysis** (memo 52): `eclipse_analysis.py` (NmF2, hmF2, Te and
+  Ti at 270-330 km, Te at the shells, 8 against 7 April) (27a2960).
+
+### Process
+- `VERSIONS.md`: the product versions v0 to v3-loo100c20-cf with their
+  memos, commits, runs and viewer exports, and how v3 was optimised
+  (5e5e5bc to e4a13e6).
+
 ## Pending: the weeks 7-9 delivery (pull request, to be dated at the merge)
 
 Record `review/records/2026-10-27-weeks-7-9.md`. Every new behaviour is off
