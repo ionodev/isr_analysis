@@ -213,6 +213,44 @@ def run_fit_lp(datadir, output_base, cfg, lp_cfg, radar_freq_hz=440.2e6, table_d
     )
 
 
+def run_ruisdap_export(output_base, cfg, lpi_cfg):
+    """
+    The fits of the lpi/fit_lpi steps, one folder per day, in the RUISDAP
+    viewer's format (ruisdap_export.py). Only the first MPI rank writes.
+
+        "ruisdap_export": {
+            "output_dir": the folder the day folders go into,
+            "name": the day folder's name, with {date} (e.g. "millstone-{date}-zenith-isr"),
+            "label": what the run is, shown in the viewer,
+            "plasma": {"YYYY-MM-DD": {"manifest": path, "url": url}, ...}: per day,
+                the day's RUISDAP export (manifest.json) and its plasma spectrum's URL;
+                the days exported,
+            "magic_constant": the density constant (default: fit_quality's of the day),
+            "antenna": "ZENITH" (default),
+            "quality_flags": true (default),
+            "echo_catalogue": a satellite catalogue for the SATELLITE flag (optional),
+            "source_commit": the isr_analysis commit, for the record (optional)
+        }
+    """
+    try:
+        from mpi4py import MPI
+        if MPI.COMM_WORLD.Get_rank() != 0:
+            return
+    except ImportError:
+        pass
+    import ruisdap_export as rex
+    for date, plasma in sorted(cfg["plasma"].items()):
+        out = os.path.join(cfg["output_dir"], cfg["name"].format(date=date))
+        if os.path.exists(out):
+            print("ruisdap_export: %s exists, skipped (choose a new name to export again)" % out)
+            continue
+        rex.export_day(output_base, out, date, plasma["manifest"], plasma["url"], cfg["label"],
+                       postfix="lpi_%d" % lpi_cfg["range_gate_us"], channel=lpi_cfg["channel"],
+                       antenna=cfg.get("antenna", "ZENITH"), magic_constant=cfg.get("magic_constant"),
+                       source_commit=cfg.get("source_commit", ""), quality=cfg.get("quality_flags", True),
+                       echo_catalogue=cfg.get("echo_catalogue"))
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python run_analysis.py <config.json>")
@@ -241,6 +279,14 @@ def main():
         print("=== Step: fit_lpi (ACF fitting) ===")
         run_fit_lpi(datadir, output_base, steps["fit_lpi"], lpi_cfg,
                     radar_freq_hz=radar_freq_hz, table_dir=table_dir)
+
+    if steps.get("ruisdap_export", {}).get("enabled", False):
+        if not lpi_cfg:
+            print("ERROR: ruisdap_export requires the lpi config (range gate, channel)")
+            sys.exit(1)
+        print("=== Step: ruisdap_export (RUISDAP viewer) ===")
+        barrier()  # every rank's fits are written
+        run_ruisdap_export(output_base if output_base is not None else datadir, steps["ruisdap_export"], lpi_cfg)
 
     if lp_cfg.get("enabled", False):
         print("=== Step: long_pulse (range-Doppler spectra) ===")

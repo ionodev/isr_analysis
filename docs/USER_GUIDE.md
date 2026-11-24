@@ -30,6 +30,7 @@ configuration:
 | `fit_lpi` | `pipeline/fit_lpi.py` | averages the ACFs in time and range and fits a theoretical ion-line ACF to them | `pp-*.h5` |
 | `long_pulse` | `pipeline/avg_range_doppler_spec.py` | range–Doppler power spectra of the uncoded long pulse | `il_*.h5` |
 | `fit_lp` | `pipeline/fit_lp.py` | fits a theoretical spectrum to the long-pulse spectra | `pp-*.h5` |
+| `ruisdap_export` | `pipeline/ruisdap_export.py` | the fits in the format of the RUISDAP web viewer, one folder per day | `parameters.f32`, `manifest.json`, ... |
 
 The two branches are independent: the coded pulses (`lpi`, `fit_lpi`) give
 the finer range resolution and are the main product; the long pulse
@@ -119,7 +120,7 @@ seconds, for a quick test), `radar_freq_hz` (default 440.2 MHz), `table_dir`
 mpirun -np 24 python3 run_analysis.py config/my_run.json
 ```
 
-The steps run in the order `lpi`, `fit_lpi`, `long_pulse`, `fit_lp`; the
+The steps run in the order `lpi`, `fit_lpi`, `ruisdap_export`, `long_pulse`, `fit_lp`; the
 work of each step is shared among the MPI processes. Without `mpirun` the
 pipeline runs in one process. Use as many processes as the machine has
 cores, and keep each process single-threaded:
@@ -226,6 +227,16 @@ One file per 10-s integration period, the input of the fit:
 | `sat_*` | the satellite unknowns, when enabled: each echo's pulse (`sat_keys`), delay, Doppler shift and fitted amplitude per lag |
 | `impulse_*` | the impulse removal, when enabled: thresholds and the share of rows removed per lag |
 | `t0`, `t1` | start and end of the period (Unix s) |
+
+### For the RUISDAP viewer
+
+The step `ruisdap_export` writes the fits in the format of the
+[RUISDAP](https://github.com/jvierine/ruisdap) web viewer, one folder per
+day; `tools/export_ruisdap.py` does the same for a finished run. The viewer
+shows each day next to its plasma lines, from RUISDAP's own export of that
+day, so the step needs that export (see the configuration reference). A new
+folder appears in the viewer once it is added to the viewer's list of
+analyses on its server.
 
 ## 7. Reading the results in Python
 

@@ -93,6 +93,26 @@ for `range_gate_us`) and writes `pp-<t>.h5` next to them.
 | `fit_restarts` | 0 | | restart the fit this many times from the best start |
 | `reanalyze` | false | | refit windows whose output exists |
 
+## `steps.ruisdap_export`: the RUISDAP viewer
+
+After `fit_lpi`, writes the fits one folder per UTC day in the format of the
+[RUISDAP](https://github.com/jvierine/ruisdap) Millstone viewer
+(`pipeline/ruisdap_export.py`; user guide section 6). The viewer shows each
+day next to its plasma lines, which come from RUISDAP's own export of that
+day, so only days RUISDAP has exported can be exported.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `output_dir` | required | the folder the day folders go into |
+| `name` | required | the day folder's name, with `{date}` (e.g. `"millstone-{date}-zenith-isr"`); an existing folder is skipped |
+| `label` | required | what the run is, shown in the viewer |
+| `plasma` | required | per day, `{"YYYY-MM-DD": {"manifest": ..., "url": ...}}`: the day's RUISDAP export's `manifest.json` and the URL of its plasma spectrum file; the days listed are the days exported |
+| `magic_constant` | fit_quality's of the day | the density constant |
+| `antenna` | `"ZENITH"` | the antenna, as in the plasma manifest |
+| `quality_flags` | true | write fit_quality's flags per fit and gate |
+| `echo_catalogue` | — | a satellite catalogue for the SATELLITE flag (echoes of at least 20 dB) |
+| `source_commit` | — | the isr_analysis commit, for the record |
+
 ## `steps.long_pulse`: the long-pulse spectra
 
 Writes `<output_dir>/range_doppler_<mode><postfix>/<channel>/il_<t>.h5`.
