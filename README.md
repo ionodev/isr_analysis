@@ -74,36 +74,56 @@ Unwanted signals are handled on the way:
   100 m/s); `"significance"` asks for the width to be below 300 m/s at three
   standard deviations.
 
-`run_analysis.py` runs the steps enabled in a JSON configuration file.
+`run_analysis.py` runs the steps enabled in a JSON configuration file; the
+modules it uses are in `pipeline/`.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/ionodev/isr_analysis.git
 cd isr_analysis
-bash setup_env.sh                       # creates ~/venv/isr_analysis
+bash tools/setup_env.sh                 # creates ~/venv/isr_analysis
 cp config/millstone_eclipse2024.json config/my_run.json
 # edit data_dir, output_dir, channel and the steps to run
 mpirun -np 24 ~/venv/isr_analysis/bin/python3 run_analysis.py config/my_run.json
 ```
 
 The first run builds the theory lookup tables in `./data/` (10–30 minutes);
-later runs reuse them. `appendix_analysis_guide.tex` explains how to get an
+later runs reuse them. `docs/appendix_analysis_guide.tex` explains how to get an
 account on the analysis server and run the pipeline there.
 
 ## Repository layout
 
+`run_analysis.py`, the script that runs everything, is the only script in
+the top folder.
+
+| Folder | Purpose |
+|--------|---------|
+| `pipeline/` | the modules `run_analysis.py` uses (below) |
+| `calibration/` | the density scale: plasma-line picking and the calibration constant |
+| `analysis/` | evaluation, test and figure scripts for the results (not part of the pipeline; see its README) |
+| `plotting/` | diagnostic plots of raw data, ACFs and profiles |
+| `tests/` | unit tests (`python3 -m pytest` in the top folder) |
+| `tools/` | environment setup and the regression benchmark |
+| `config/` | run configurations |
+| `data/` | the theory lookup tables (built on the first run) |
+| `docs/`, `figs/` | the analysis-server guide; figures |
+
+The modules in `pipeline/`:
+
 | Files | Purpose |
 |-------|---------|
-| `run_analysis.py`, `config/` | pipeline driver and run configurations |
 | `outlier_lpi.py`, `fit_lpi.py` | coded pulses: inversion and fit |
 | `avg_range_doppler_spec.py`, `fit_lp.py` | long pulse: spectra and fit |
-| `isr_spec.py`, `il_interp.py` | ISR theory and its lookup tables |
+| `isr_spec.py`, `il_interp.py`, `fit_ionline.py` | ISR theory, its lookup tables, ion-line model helpers |
 | `radar_timing.py`, `millstone_radar_state.py`, `tx_delay.py`, `tx_power.py` | pulse timing, antenna pointing, transmitter state |
-| `raw_reader.py` | fast reader for the raw data |
-| `single_pulse_satellite_cfar.py`, `satellite_columns.py` | satellite detection and fitting |
-| `plot_*.py` | diagnostic plots of raw data, ACFs and profiles |
-| `test_*.py` | unit tests (`python3 -m pytest`) |
+| `raw_reader.py`, `stuffr.py` | fast reader for the raw data; helpers |
+| `single_pulse_satellite_cfar.py`, `satellite_columns.py` | satellite detection, tracking and fitting |
+| `impulse_rows.py` | power-line impulses: the rows they hit, removed from the inversion |
+| `fit_quality.py` | density constants and quality flags of the fitted products |
+
+Scripts outside `pipeline/` find its modules by adding the folder to their
+import path, so they run from anywhere, e.g. `python3 analysis/eclipse_plots.py`.
 
 ## Documentation
 
