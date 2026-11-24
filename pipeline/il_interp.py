@@ -8,7 +8,7 @@ import time
 import random
 import scipy.constants as sc
 
-_DEFAULT_TABLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_DEFAULT_TABLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")  # data/ in the top folder
 
 
 def open_table_read(fname, retries=120, delay=0.5):

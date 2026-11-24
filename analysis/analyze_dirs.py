@@ -1,3 +1,6 @@
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import outlier_lpi as olpi
 import avg_range_doppler_spec as ards
 import traceback

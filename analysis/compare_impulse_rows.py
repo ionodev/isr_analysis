@@ -36,7 +36,7 @@ import h5py
 import numpy as n
 
 import compare_variants as cv
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_quality as fq
 
 BANDS = [(150, 250), (250, 350), (350, 450), (450, 600), (600, 700)]

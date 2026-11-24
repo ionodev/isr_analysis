@@ -37,7 +37,7 @@ import h5py
 import numpy as n
 
 import compare_variants as cv
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_quality as fq
 
 KM_PER_US = 299792458.0 / 2 / 1e9

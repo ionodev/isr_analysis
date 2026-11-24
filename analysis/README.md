@@ -1,16 +1,15 @@
 # Analysis scripts
 
 Scripts that test, evaluate or plot the pipeline's results for the memos.
-They are not part of the pipeline: nothing in the repository's top folder
-imports them, and the products do not depend on them. They import the
-pipeline modules from the folder above.
+They are not part of the pipeline: nothing in `pipeline/` or
+`run_analysis.py` imports them, and the products do not depend on them.
+They import the pipeline modules from `pipeline/`.
 
-Run them from the repository's top folder, e.g.
-`python3 analysis/compare_weights.py ...`; the usage is in each script's
-docstring (written before the move, so it says `python3 compare_weights.py`).
-To rerun a memo exactly, check out the commit or product tag its Reproduce
-section names (`product-v1` to `product-v3.1` have the scripts in the top
-folder).
+Run them as e.g. `python3 analysis/compare_weights.py ...`; the usage is in
+each script's docstring (written before the move, so it says
+`python3 compare_weights.py`). To rerun a memo exactly, check out the commit
+or product tag its Reproduce section names (`product-v1` to `product-v3.1`
+have the scripts in the top folder).
 
 | Script | What it does | Memo |
 |---|---|---|
@@ -38,5 +37,8 @@ folder).
 | `range_lag_doppler.py` | range-lag and range-Doppler images of one fit window | 45, 46 |
 
 The plasma-line calibration (`plasma_line_picker.py`,
-`plasma_line_density_scale.py`) stays in the top folder: it produces the
-density constants in `fit_quality.py`, which every product uses.
+`plasma_line_density_scale.py`) is in `calibration/`: it produces the
+density constants in `pipeline/fit_quality.py`, which every product uses.
+Juha's original scripts here (`analyze_dirs.py`, `example_analysis.py`,
+`full_profile_fit.py`, `isr_spec_comparison.py`) are examples and
+checks from before the project; they have hard-coded data paths.

@@ -61,7 +61,7 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 import h5py
 import numpy as n
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 
 KM_PER_US = 299792458.0 / 2 / 1e9
 DF = n.arange(-3000.0, 3000.0 + 1e-9, 25.0)

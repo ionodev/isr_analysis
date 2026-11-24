@@ -16,7 +16,7 @@ from digital_rf import DigitalMetadataReader
 
 import compare_variants as cv
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_quality as fq
 
 CAT = "/mnt/data/henrik/satellite_detections_2026-10-02"

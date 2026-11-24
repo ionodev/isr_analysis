@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as n
 import scipy.constants as c
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_lpi as fl
 
 MAX_DT = 60
@@ -89,7 +89,7 @@ def main():
         args = args[:i]
     dirs, t0, out = args[0:2], int(args[2]), args[3]
     ranges = [float(x) for x in args[4:]]
-    fl._init_tables(440.2e6, table_dir=os.path.join(os.path.dirname(os.path.abspath(fl.__file__)), "data"))
+    fl._init_tables(440.2e6, table_dir=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(fl.__file__))), "data"))
 
     runs = []
     for d in dirs:

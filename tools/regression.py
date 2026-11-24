@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Regression benchmark for the review process (REVIEW_PROCESS.md).
+Regression benchmark: does a change leave the pipeline's outputs unchanged?
 
-Runs pipeline stages on the fixed benchmark of review/benchmark.json, once
+Runs pipeline stages on the fixed benchmark of tools/benchmark.json, once
 with the code of a base commit (default: main) and once with the code of the
 commit under review, and compares every output byte for byte:
 
@@ -23,9 +23,9 @@ script, benchmark.json, the installed Python packages and the table files.
 Each job runs in its own memory-limited scope. The report goes to stdout and
 to ~/isr_project/regression/reports/.
 
-    python3 review/regression.py <branch or commit> [--base main] [--jobs 16]
+    python3 tools/regression.py <branch or commit> [--base main] [--jobs 16]
 
-Run main's copy of this script (see REVIEW_PROCESS.md). The commit under
+Run main's copy of this script. The commit under
 review must contain the base (merge or rebase main into the branch first).
 
 Exit status: 0 every output is bit-identical to the base's; 1 some output
@@ -82,8 +82,11 @@ def git(*a, cwd=REPO):
 # ---------------------------------------------------------------- workers
 
 def worker(kind, code, out, channel, periods):
-    """Run one job with the pipeline code of the worktree `code`."""
+    """Run one job with the pipeline code of the worktree `code` (in pipeline/
+    since 24 November 2026, in the top folder before)."""
     sys.path.insert(0, code)
+    if os.path.isdir(os.path.join(code, "pipeline")):
+        sys.path.insert(0, os.path.join(code, "pipeline"))
     os.chdir(code)
     if kind == "lpi":
         import outlier_lpi as olpi
@@ -389,13 +392,13 @@ def run(args):
             wt = line.split("\n")[0].split(" ", 1)[1]
             if git("status", "--porcelain", "--untracked-files=no", cwd=wt):
                 print("WARNING: the worktree %s of %s has uncommitted changes; they are not tested" % (wt, args.target))
-    for rel in ("review/regression.py", "review/benchmark.json"):
+    for rel in ("tools/regression.py", "tools/benchmark.json"):
         mine = open(os.path.join(REPO, rel)).read()
         r = subprocess.run(["git", "show", "%s:%s" % (base, rel)], cwd=REPO, capture_output=True, text=True)
         if r.returncode != 0:
             print("WARNING: %s has no %s yet; using this copy (bootstrap)" % (args.base, rel))
         elif r.stdout != mine and not args.allow_other_tool:
-            raise Invalid("this copy of %s differs from %s's; run %s's copy (REVIEW_PROCESS.md)"
+            raise Invalid("this copy of %s differs from %s's; run %s's copy"
                           % (rel, args.base, args.base))
     clean_stale()
     key = environment_key()

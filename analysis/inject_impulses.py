@@ -48,6 +48,7 @@ import h5py
 import numpy as n
 
 import inject_satellites as inj
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 
 N_GAPS = 8
 MAINS_HZ = 60.0

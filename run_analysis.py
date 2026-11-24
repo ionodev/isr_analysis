@@ -19,9 +19,9 @@ import os
 import json
 import numpy as n
 
-# Ensure local modules (stuffr, il_interp, millstone_radar_state, …) are found
-# when MPI workers are spawned in a different working directory.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# The pipeline modules (stuffr, il_interp, millstone_radar_state, …) are in
+# pipeline/; found also when MPI workers start in a different working directory.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pipeline"))
 
 # Fall back to Agg only when no display is available (headless / MPI on server).
 # If DISPLAY or WAYLAND_DISPLAY is set, use whatever backend matplotlib picks normally.

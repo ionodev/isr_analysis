@@ -2,7 +2,9 @@ import numpy as n
 import matplotlib.pyplot as plt
 import h5py
 import glob
+import os
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import stuffr
 import os
 
