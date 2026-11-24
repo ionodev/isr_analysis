@@ -14,9 +14,10 @@ import numpy as n
 
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
+import paths  # noqa: E402  (the data paths, analysis/paths.py)
 import satellite_columns as satcol
 
-DATA = "/mnt/data/juha/millstone_hill/isr/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"
+DATA = paths.DATA_DIR
 T0 = 1712484000
 
 

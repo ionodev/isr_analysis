@@ -60,15 +60,20 @@ RESIDUAL_THRESHOLD = 2.0
 KM_PER_US = 299792458.0 / 2 / 1e9
 
 
+# the folder of a run's files under its output_dir: lpi_<range_gate_us>/<channel>
+SUBDIR = os.path.join("lpi_60", "zenith-l")
+
+
 def density_constant(t):
     """The density constant of the UTC day of time t (unix seconds)."""
     day = datetime.datetime.fromtimestamp(t, datetime.timezone.utc).date().isoformat()
     return DENSITY_CONSTANT_BY_DAY.get(day, DENSITY_CONSTANT)
 
 
-def load_fits(d, t_range=None, constant=None):
-    """constant: n_e's scale; None for density_constant() of each window."""
-    files = sorted(glob.glob(os.path.join(d, "lpi_60", "zenith-l", "pp-*.h5")))
+def load_fits(d, t_range=None, constant=None, subdir=SUBDIR):
+    """constant: n_e's scale; None for density_constant() of each window.
+    subdir: the fits' folder under d, lpi_<range_gate_us>/<channel>."""
+    files = sorted(glob.glob(os.path.join(d, subdir, "pp-*.h5")))
     rows = []
     for f in files:
         t = int(os.path.basename(f)[3:-3])
@@ -90,14 +95,14 @@ def load_fits(d, t_range=None, constant=None):
     return out
 
 
-def residual_columns(d, t_range=None, lags=slice(0, 10)):
+def residual_columns(d, t_range=None, lags=slice(0, 10), subdir=SUBDIR):
     """
     The satellite columns of the LPI files of a directory with their
     residual: rows (period index, range km, residual over the noise), from
     sat_resid (mean over the given lags). Empty when the files have none.
     """
     out = []
-    for f in sorted(glob.glob(os.path.join(d, "lpi_60", "zenith-l", "lpi-*.h5"))):
+    for f in sorted(glob.glob(os.path.join(d, subdir, "lpi-*.h5"))):
         t = int(os.path.basename(f)[4:-3])
         if t_range is not None and not (t_range[0] <= t < t_range[1]):
             continue

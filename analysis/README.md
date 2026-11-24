@@ -5,6 +5,9 @@ They are not part of the pipeline: nothing in `pipeline/` or
 `run_analysis.py` imports them, and the products do not depend on them.
 They import the pipeline modules from `pipeline/`.
 
+Five of them read the project's data from environment variables
+(`analysis/paths.py`): `ISR_DATA_DIR` (the recording), `ISR_SATELLITE_CATALOGUE`
+and `ISR_QUIET_CATALOGUE`; a script that needs one that is not set says so.
 Run them as e.g. `python3 analysis/compare_weights.py ...`; the usage is in
 each script's docstring (written before the move, so it says
 `python3 compare_weights.py`). To rerun a memo exactly, check out the commit
@@ -39,6 +42,8 @@ have the scripts in the top folder).
 The plasma-line calibration (`plasma_line_picker.py`,
 `plasma_line_density_scale.py`) is in `calibration/`: it produces the
 density constants in `pipeline/fit_quality.py`, which every product uses.
-Juha's original scripts here (`analyze_dirs.py`, `example_analysis.py`,
-`full_profile_fit.py`, `isr_spec_comparison.py`) are examples and
-checks from before the project; they have hard-coded data paths.
+Juha's original scripts here are examples from before the project:
+`example_analysis.py <data dir>` (an inversion and fit, a good first
+example), `analyze_dirs.py <data dir> ...`, `full_profile_fit.py <data dir>`;
+`isr_spec_comparison.py` needs `ISRSpectrum` and a module `isr_test_par`
+that is not in this repository.

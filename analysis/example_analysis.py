@@ -11,7 +11,8 @@ import fit_lpi as flpi
 # metadata/antenna_control_metadata,  metadata/id_metadata, 
 # metadata/powermeter
 #
-datadir="/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000/"
+# usage: python3 analysis/example_analysis.py <data dir>
+datadir=sys.argv[1]
 # 30 us range gating, matched bit length
 rg=30
 ch="misa-l"

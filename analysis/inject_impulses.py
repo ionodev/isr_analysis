@@ -49,6 +49,7 @@ import numpy as n
 
 import inject_satellites as inj
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
+import paths  # noqa: E402  (the data paths, analysis/paths.py)
 
 N_GAPS = 8
 MAINS_HZ = 60.0
@@ -71,7 +72,7 @@ def _weights(case):
     if case.endswith("_eq"):
         return "equal", False
     return "variance", case.endswith("_loo")
-QUIET_CATALOGUE = "/mnt/data/henrik/sat_v2_2026-10/quiet_catalogue_pfa1e-6"
+QUIET_CATALOGUE = paths.QUIET_CATALOGUE
 
 
 def lpi_config(out, impulse_rows, weighting="variance", exclude_self=False):
