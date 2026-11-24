@@ -1,0 +1,74 @@
+{
+ "_notes": [
+  "Pipeline version 3 (tag product-v3.1): satellite echoes as unknowns with pass tracking,",
+  "impulse-hit rows removed, leave-one-out weights over 100 pulses with a row cap of 20.",
+  "Before running: (1) make the satellite catalogue with",
+  "  python3 pipeline/single_pulse_satellite_cfar.py --data <data_dir> --output <catalogue> --pfa 1e-6",
+  "and put its path in steps.lpi.satellites.catalogue; (2) build the wider theory table with",
+  "  mpirun -np N python3 tools/make_table.py data/v3   (it writes data/v3/wide)",
+  "channel_delay_us null measures the tx-to-echo channel delay from the data;",
+  "steps.lpi.periods (a list of 10-s period numbers) limits the analysis, e.g. to the zenith blocks."
+ ],
+ "experiment": "example_v3",
+ "data_dir": "/path/to/usrp-rx0-r_YYYYMMDDTHHMMSS_YYYYMMDDTHHMMSS",
+ "output_dir": "/path/to/output",
+ "steps": {
+  "lpi": {
+   "enabled": true,
+   "channel": "zenith-l",
+   "range_gate_us": 60,
+   "avg_dur": 10,
+   "min_tx_frac": 0.5,
+   "pass_band_hz": 100000,
+   "filter_len": 20,
+   "max_range_delay_us": 7000,
+   "save_acf_images": false,
+   "lag_avg": 1,
+   "reanalyze": false,
+   "weighting": "variance",
+   "background_column": true,
+   "outlier_rejection": false,
+   "satellites": {
+    "catalogue": "/path/to/satellite_catalogue",
+    "channel_delay_us": null,
+    "track": true,
+    "strong_pfa": 1e-10,
+    "track_options": {
+     "min_weak_pulses": 3
+    }
+   },
+   "impulse_rows": true,
+   "weights_exclude_self": true,
+   "weights_width": 100,
+   "weights_row_cap": 20.0
+  },
+  "fit_lpi": {
+   "enabled": true,
+   "channel": "zenith-l",
+   "max_dt": 300,
+   "first_lag": 0,
+   "range_avg": [
+    1,
+    3,
+    3,
+    5
+   ],
+   "reanalyze": false,
+   "range_limits": [
+    0,
+    230,
+    300,
+    700,
+    1500
+   ],
+   "clutter_cutoff_km": 150,
+   "range_avg_rho": [
+    -0.3,
+    -0.08,
+    -0.06
+   ],
+   "range_avg_rho_min_km": 300
+  }
+ },
+ "table_dir": "data/v3/wide"
+}

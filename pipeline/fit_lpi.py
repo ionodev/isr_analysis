@@ -1147,47 +1147,6 @@ def fit_lpifiles(dirn="lpi_f",
 
 
 if __name__ == "__main__":
-    import sys
-    #
-    # 
-    #               "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/",
-    #     dirnames=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/",
-    #               "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/"]
-    #
-    #
-    #
-    # dirnames=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/",
-    #           
-    #           
-    #           
-    # dirnames=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03/usrp-rx0-r_20211203T000000_20211203T033600/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-05/usrp-rx0-r_20211205T000000_20211205T160100/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-06/usrp-rx0-r_20211206T000000_20211206T132500/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-21/usrp-rx0-r_20211221T125500_20211221T220000/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-10-14/usrp-rx0-r_20231014T130000_20231015T041500",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/",
-    #           "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-20/usrp-rx0-r_20230920T202127_20230921T040637/"]
-#    dirnames=["/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000"]
-
-    dirnames=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100"]
-    
-    for d in dirnames:
-        try:
-            fit_lpifiles(dirn=d,channel="misa-l",postfix="_30", max_dt=300, plot=0, first_lag=0, reanalyze=True, range_avg=n.array([1,3,5]))
-        except:
-            traceback.print_exc()            
-        exit(0)
-
-        try:
-            fit_lpifiles(dirn=d, channel="zenith-l", postfix="_30", max_dt=300, plot=0, first_lag=0, reanalyze=True, range_avg=n.array([2,3,5]))
-        except:
-        #           print("problem with zenith")
-            traceback.print_exc()
-        #          pass
-
-        #        zpm,mpm=txp.get_tx_power_model(dirn="%s/metadata/powermeter"%(d))
-
+    # The pipeline runs this step from run_analysis.py with a JSON
+    # configuration (see the README); this module has no command line of its own.
+    raise SystemExit("Run the pipeline with: python3 run_analysis.py <config.json>")

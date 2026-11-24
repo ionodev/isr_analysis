@@ -164,7 +164,7 @@ lp_data[800]["fi0"]=n.min(lp_data[800]["freq_idx"])
 lp_data[800]["fi1"]=n.max(lp_data[800]["freq_idx"])+1
 
 
-def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/",
+def avg_range_doppler_spectra(dirname,
                               save_png=True,
                               avg_dur=10,
                               step=10,
@@ -519,67 +519,6 @@ def avg_range_doppler_spectra(dirname="/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1
             print("problem with integration period")
 
 if __name__ == "__main__":
-
-#    dirs=["/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03a/usrp-rx0-r_20211203T224500_20211204T160000/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-01/usrp-rx0-r_20211201T230000_20211202T160100/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-24/usrp-rx0-r_20230924T200050_20230925T041059/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-28/usrp-rx0-r_20230928T211929_20230929T040533/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-03/usrp-rx0-r_20211203T000000_20211203T033600/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-05/usrp-rx0-r_20211205T000000_20211205T160100/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-06/usrp-rx0-r_20211206T000000_20211206T132500/",
-#          "/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2021-12-21/usrp-rx0-r_20211221T125500_20211221T220000/"]
-
-
-    dirs=["/media/j/4df2b77b-d2db-4dfa-8b39-7a6bece677ca/eclipse2024/usrp-rx0-r_20240407T100000_20240409T110000/"]
-    
-    for d in dirs:
-        try:
-            avg_range_doppler_spectra(dirname=d,
-                                      channel="misa-l",
-                                      save_png=True,
-                                      avg_dur=10,
-                                      reanalyze=False,
-                                      avg_type="outlier_mean",
-                                      postfix="_outlier",
-                                      mode=300
-                                      )
-        except:
-            traceback.print_exc()
-        try:
-            avg_range_doppler_spectra(dirname=d,
-                                      channel="zenith-l",
-                                      save_png=True,
-                                      avg_dur=10,
-                                      reanalyze=False,
-                                      avg_type="outlier_mean",
-                                      postfix="_outlier",
-                                      mode=300
-                                      )
-        except:
-            traceback.print_exc()
-        if False:
-            try:
-                avg_range_doppler_spectra(dirname=d,
-                                          channel="misa-l",
-                                          save_png=True,
-                                          avg_dur=10,
-                                          reanalyze=False,
-                                          avg_type="outlier_mean",
-                                          postfix="_outlier",
-                                          mode=800
-                                          )
-            except:
-                traceback.print_exc()
-        
-#        try:
- #           avg_range_doppler_spectra(dirname=d,
-  #                                    channel="zenith-l",
-   #                                   save_png=True,
-     #                                 avg_dur=10,
-    #                                  reanalyze=True
-      #                                )
-       # except:
-        #    traceback.print_exc()
-
-
+    # The pipeline runs this step from run_analysis.py with a JSON
+    # configuration (see the README); this module has no command line of its own.
+    raise SystemExit("Run the pipeline with: python3 run_analysis.py <config.json>")

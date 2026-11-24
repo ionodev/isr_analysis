@@ -79,11 +79,14 @@ modules it uses are in `pipeline/`.
 
 ## Quick start
 
+Requirements: Python 3, the FFTW library (`libfftw3-dev`) and an MPI
+implementation (e.g. OpenMPI); the Python packages are in `requirements.txt`.
+
 ```bash
 git clone https://github.com/ionodev/isr_analysis.git
 cd isr_analysis
-bash tools/setup_env.sh                 # creates ~/venv/isr_analysis
-cp config/millstone_eclipse2024.json config/my_run.json
+bash tools/setup_env.sh                 # creates ~/venv/isr_analysis from requirements.txt
+cp config/example_basic.json config/my_run.json
 # edit data_dir, output_dir, channel and the steps to run
 mpirun -np 24 ~/venv/isr_analysis/bin/python3 run_analysis.py config/my_run.json
 ```
@@ -91,6 +94,31 @@ mpirun -np 24 ~/venv/isr_analysis/bin/python3 run_analysis.py config/my_run.json
 The first run builds the theory lookup tables in `./data/` (10–30 minutes);
 later runs reuse them. `docs/appendix_analysis_guide.tex` explains how to get an
 account on the analysis server and run the pipeline there.
+
+### With satellite and impulse removal
+
+`config/example_v3.json` has the settings of pipeline version 3: satellite
+echoes as unknowns with pass tracking, the rows hit by power-line impulses
+removed, and leave-one-out weights. It needs two things first:
+
+```bash
+# 1. the satellite catalogue: every pulse searched for echoes
+python3 pipeline/single_pulse_satellite_cfar.py --data /path/to/data --output /path/to/satellite_catalogue --pfa 1e-6
+# 2. the wider theory table the version 3 fit uses (written to data/v3/wide)
+mpirun -np 24 python3 tools/make_table.py data/v3
+```
+
+Then set `data_dir`, `output_dir` and `steps.lpi.satellites.catalogue` in a
+copy of the example and run it as above.
+
+### Tests
+
+```bash
+pip install -r requirements-optional.txt
+python3 -m pytest tests
+```
+
+The tests also run on GitHub for every push and pull request.
 
 ## Repository layout
 

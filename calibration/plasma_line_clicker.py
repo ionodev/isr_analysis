@@ -143,7 +143,7 @@ def build_spectra(dirname,ranges_km=PLASMA_LINE_RANGES_KM,min_gates=MIN_GATES):
 
 
 if __name__ == "__main__":
-    dirname=sys.argv[1]#"/media/j/fee7388b-a51d-4e10-86e3-5cabb0e1bc13/isr/2023-09-05/usrp-rx0-r_20230905T214448_20230906T040054/"
+    dirname=sys.argv[1]  # the data folder
     zenith_t,zenith_s,misa_t,misa_s,freqs=build_spectra(dirname)
     zenith_s=n.vstack(zenith_s)
     click_spec(zenith_t,zenith_s,freqs,dirname,calname="zenithcal")
