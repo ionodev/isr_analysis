@@ -130,3 +130,17 @@ import path, so they run from anywhere, e.g. `python3 analysis/eclipse_plots.py`
 Methods, tests and results are written up in a series of processing memos,
 with a running task list. These are kept outside this repository and are
 available to project contributors.
+
+## Reusable range–Doppler processing
+
+The Rust [range–Doppler estimator](crates/range-doppler) handles configurable
+within-pulse spectra, overlapping fast-time gates, UTC integration windows and
+signed-spectrum normalization. It has no instrument file-format dependencies.
+The [SYISR uncoded-long-pulse driver](syisr/lower_hybrid) handles SYISR binary
+records, experiment checks, beam geometry, transient screening and HDF5 products.
+Animation export uses Rustplotlib's reusable streaming `AnimationWriter` API.
+
+The [SYISR 2 ms ion-line profile analysis](syisr/ulp2ms/) provides raw pulse
+screening, signed lag products, full range/lag covariance, and joint
+5000-km profile inversion with either knot composition or a global
+sigmoid-H/Gaussian-He model. Scientific products remain external HDF5 files.

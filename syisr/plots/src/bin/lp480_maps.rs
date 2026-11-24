@@ -1,0 +1,537 @@
+//! Plasma/composition maps and signed background-subtracted range-Doppler frames.
+use anyhow::{Result, ensure};
+use chrono::{DateTime, Utc};
+use rustplotlib::*;
+use std::{collections::BTreeSet, path::Path};
+use syisr_ac::{
+    campaign,
+    lp480::{self, Decoded, Manifest},
+    lp480_fit::{Background, BeamFit, WindowFit},
+};
+fn main() -> Result<()> {
+    let a: Vec<_> = std::env::args().collect();
+    ensure!(a.len() == 4, "maps|video ROOT OUTPUT");
+    let root = Path::new(&a[2]);
+    let out = Path::new(&a[3]);
+    std::fs::create_dir_all(out)?;
+    if a[1] == "maps" || a[1] == "h-maps" {
+        maps(root, out, a[1]=="h-maps")
+    } else {
+        video(root, out)
+    }
+}
+// An RGBA layer provides true per-pixel opacity without changing stored values.
+fn opacity_field(
+    values: &[f64],
+    weak: &[bool],
+    nt: usize,
+    nz: usize,
+    top: f64,
+    scale: &Scale,
+) -> image::RgbaImage {
+    let (width, height) = (1200u32, 350u32);
+    let mut image = image::RgbaImage::new(width, height);
+    for y in 0..height {
+        let altitude = top + 2.5 - (y as f64 + 0.5) / height as f64 * (top + 2.5 - 97.5);
+        let zi = ((altitude - 97.5) / 5.).floor().clamp(0., (nz - 1) as f64) as usize;
+        for x in 0..width {
+            let t = ((x as f64 + 0.5) / width as f64 * nt as f64)
+                .floor()
+                .min((nt - 1) as f64) as usize;
+            let index = zi * nt + t;
+            if let Some(mut rgba) = scale.map(values[index]) {
+                if weak[index] {
+                    rgba[3] = 128;
+                }
+                image.put_pixel(x, y, image::Rgba(rgba));
+            }
+        }
+    }
+    image
+}
+// Necessary support checks only. In particular, neither smoothness nor a
+// small fitted fraction demonstrates that the composition is measured.
+fn weak_parameter(w: &WindowFit, b: &BeamFit, field: usize, zi: usize) -> bool {
+    let accepted = matches!(w.status.as_str(), "converged" | "data_stable_gradient_pending");
+    let residual_ok = b.residual_rms_sigma.is_finite() && b.residual_rms_sigma <= 3.;
+    let detection = b.short_lag_detection_sigma.get(zi).copied().unwrap_or(0.);
+    match field {
+        0 => !accepted || !residual_ok || !detection.is_finite() || detection < 5.,
+        1 | 2 => !accepted || !residual_ok || !b.temperature_data_supported.get(zi).copied().unwrap_or(false),
+        3 => !accepted || !residual_ok || !b.temperature_data_supported.get(zi).copied().unwrap_or(false)
+            || b.velocity_m_s[zi].abs() >= 1950.,
+        _ => {
+            let z = b.altitude_km[zi];
+            if z <= 500. { return false; } // Prescribed zero, not a composition measurement.
+            let contributors = w.beams.iter().filter(|beam| {
+                beam.altitude_km.binary_search_by(|h|h.total_cmp(&z)).ok().is_some_and(|i|
+                    beam.residual_rms_sigma <= 3. && beam.short_lag_detection_sigma.get(i).is_some_and(|s|s.is_finite() && *s>=5.))
+            }).count();
+            // A transition parameter hitting a bound does NOT establish large
+            // pointwise fraction uncertainty. Keep that diagnostic in metadata.
+            !accepted || contributors < 2
+        }
+    }
+}
+fn maps(root: &Path, out: &Path, h_only: bool) -> Result<()> {
+    let mut windows = vec![];
+    for p in std::fs::read_dir(root)? {
+        let p = p?.path();
+        if p.extension().is_some_and(|x| x == "h5") && !p.to_string_lossy().contains("checkpoint") {
+            if let Ok(w) = campaign::load::<WindowFit>(&p) {
+                windows.push(w);
+            }
+        }
+    }
+    windows.sort_by_key(|w| w.start_utc_s);
+    ensure!(!windows.is_empty(), "no completed fit windows");
+    let times: Vec<_> = windows.iter().map(|w| w.start_utc_s).collect();
+    let first = times[0];
+    let offset = if std::env::var_os("SYISR_PLOT_UTC").is_some() {
+        0
+    } else {
+        28800
+    };
+    let day = (first + offset).div_euclid(86400) * 86400;
+    let x0 = (first + offset - day) as f64 / 3600.;
+    let nt = ((times[times.len() - 1] - first) / 1800 + 1) as usize;
+    let x: Vec<_> = (0..=nt).map(|i| x0 + i as f64 * 0.5).collect();
+    let top = windows
+        .iter()
+        .flat_map(|w| &w.beams)
+        .filter_map(|b| b.altitude_km.last().copied())
+        .fold(100f64, f64::max);
+    let nz = ((top - 100.) / 5.).round() as usize + 1;
+    let z: Vec<_> = (0..=nz).map(|i| 97.5 + i as f64 * 5.).collect();
+    let mut beams: BTreeSet<_> = windows
+        .iter()
+        .flat_map(|w| {
+            w.beams.iter().map(|b| {
+                (
+                    (b.azimuth_deg * 100.).round() as i64,
+                    (b.elevation_deg * 100.).round() as i64,
+                )
+            })
+        })
+        .collect();
+    for w in &windows {
+        if let Some(list) = w.metadata["unsupported_beams"].as_array() {
+            for b in list {
+                beams.insert((
+                    (b["azimuth_deg"].as_f64().unwrap() * 100.).round() as i64,
+                    (b["elevation_deg"].as_f64().unwrap() * 100.).round() as i64,
+                ));
+            }
+        }
+    }
+    let first_date = DateTime::<Utc>::from_timestamp(first + offset, 0).unwrap();
+    let last_date =
+        DateTime::<Utc>::from_timestamp(times[times.len() - 1] + 1800 + offset, 0).unwrap();
+    let date = if first_date.date_naive() == last_date.date_naive() {
+        first_date.format("%d %B %Y").to_string()
+    } else {
+        format!(
+            "{}--{}",
+            first_date.format("%d %B"),
+            last_date.format("%d %B %Y")
+        )
+    };
+    let strict = windows.iter().filter(|w| w.status == "converged").count();
+    let stable = windows
+        .iter()
+        .filter(|w| w.status == "data_stable_gradient_pending")
+        .count();
+    let unresolved = windows.len() - strict - stable;
+    for (az, el) in beams {
+        let mut f = Figure::new(IntendedUse::ArticleWide);
+        f.width_mm = 205.;
+        f.height_mm = if h_only {95.} else {278.};
+        f.font_pt = 10.;
+        f.raster_dpi = 220.;
+        f.latex.cache = out.join("latex-cache");
+        f.labels.push(Label::new(
+            format!(
+                "SYISR 480 $\\mu$s; azimuth {:.2}$^\\circ$, elevation {:.2}$^\\circ$",
+                az as f64 / 100.,
+                el as f64 / 100.
+            ),
+            103.,
+            5.,
+        ));
+        f.labels.push(Label::new(
+            format!("{date}; 30-minute windows; shared H$^+$, He$^+=0$"),
+            103.,
+            12.,
+        ));
+        let mut opacity_masks = Vec::new();
+        let mut available_masks = Vec::new();
+        let first_field=if h_only {4} else {0};
+        for q in first_field..5 {
+            let mut values = vec![f64::NAN; nt * nz];
+            let mut weak = vec![false; nt * nz];
+            for w in &windows {
+                let t = ((w.start_utc_s - first) / 1800) as usize;
+                if let Some(b) = w.beams.iter().find(|b| {
+                    (b.azimuth_deg * 100.).round() as i64 == az
+                        && (b.elevation_deg * 100.).round() as i64 == el
+                }) {
+                    let v = match q {
+                        0 => &b.ne_m3,
+                        1 => &b.ti_k,
+                        2 => &b.te_k,
+                        3 => &b.velocity_m_s,
+                        _ => &b.h_fraction,
+                    };
+                    for (zi, a) in v.iter().enumerate() {
+                        values[zi * nt + t] = *a;
+                        weak[zi * nt + t] = weak_parameter(w,b,q,zi)
+                            && !((q==1 || q==2) && std::env::var_os("SYISR_SHOW_UNSUPPORTED_T").is_some());
+                    }
+                }
+            }
+            opacity_masks.push(weak.clone());
+            available_masks.push(values.iter().map(|v|v.is_finite()).collect::<Vec<_>>());
+            let scale = f.scale(Scale::new(
+                [
+                    [1e9, 1e13],
+                    [150., 3000.],
+                    [150., 6000.],
+                    [-100., 100.],
+                    [0., 1.],
+                ][q],
+                if q == 0 {
+                    Normalization::Log
+                } else {
+                    Normalization::Linear
+                },
+                if q == 3 {
+                    ColorMap::diverging()
+                } else {
+                    ColorMap::storm()
+                },
+            )?);
+            let yy = 22. + (q-first_field) as f64 * 45.;
+            let mut ax = Axes::new(
+                [x[0], *x.last().unwrap()],
+                [100., top],
+                if q == 4 {
+                    if offset == 0 {
+                        "UTC"
+                    } else {
+                        "China local time (UTC+8)"
+                    }
+                } else {
+                    ""
+                },
+                "Altitude (km)",
+            );
+            ax.yticks = vec![100., 400., 700., 1000., 1400.]
+                .into_iter()
+                .filter(|z| *z <= top)
+                .collect();
+            if top > 1400. {
+                ax.yticks.push(top);
+            }
+            let tick_step = if nt > 672 { 96. } else if nt > 336 { 48. } else if nt > 144 { 24. } else if nt > 60 { 12. } else { 4. };
+            ax.xticks = ((x[0] / tick_step).ceil() as i64
+                ..=(*x.last().unwrap() / tick_step).floor() as i64)
+                .map(|i| i as f64 * tick_step)
+                .collect();
+            ax.xticklabels = Some(
+                ax.xticks
+                    .iter()
+                    .map(|v| {
+                        if nt > 60 {
+                            DateTime::<Utc>::from_timestamp(day + (*v * 3600.) as i64, 0)
+                                .unwrap()
+                                .format(if nt > 144 { "%d/%m" } else { "%d/%m %Hh" })
+                                .to_string()
+                        } else {
+                            format!("{:02}:00", (*v as i64).rem_euclid(24))
+                        }
+                    })
+                    .collect(),
+            );
+            if q < 4 {
+                ax.show_x_axis = false;
+            }
+            let mut p = Panel::new(Rect::new(20., yy, 150., 35.), ax);
+            if weak.iter().any(|w| *w) {
+                p.push(Layer::Image(opacity_field(
+                    &values,
+                    &weak,
+                    nt,
+                    nz,
+                    top,
+                    &f.scales[scale],
+                )));
+            } else {
+                p.pcolormesh(x.clone(), z.clone(), values, scale)?;
+            }
+            f.panels.push(p);
+            f.colorbars.push(Colorbar::new(
+                Rect::new(175., yy, 3., 35.),
+                scale,
+                [
+                    r"$N_e$ (m$^{-3}$)",
+                    r"$T_i$ (K)",
+                    r"$T_e$ (K)",
+                    r"$v_i$ (m/s)",
+                    r"H$^+$ fraction",
+                ][q],
+                match q {
+                    0 => vec![],
+                    1 => vec![150., 1000., 2000., 3000.],
+                    2 => vec![150., 2000., 4000., 6000.],
+                    3 => vec![-100., 0., 100.],
+                    _ => vec![0., 0.5, 1.],
+                },
+            ));
+            if q == 0 {
+                for exponent in 9..=13 {
+                    f.labels.push(Label::new(
+                        format!("$10^{{{exponent}}}$"),
+                        184.,
+                        yy + 35. * (1. - (exponent - 9) as f64 / 4.),
+                    ));
+                }
+            }
+        }
+        let calibration = windows[0].metadata["density_calibration"]["density_source"]
+            .as_str()
+            .unwrap_or("IRI");
+        let unresolved_label = if unresolved > 0 {
+            format!("; {unresolved} unresolved")
+        } else {
+            String::new()
+        };
+        f.labels.push(Label::new(
+            format!("{strict} converged; {stable} data-stable{unresolved_label}; {calibration} gain; intervals pending"),
+            103.,
+            if h_only {77.} else {261.},
+        ));
+        if !windows.iter().any(|w| {
+            w.beams.iter().any(|b| {
+                (b.azimuth_deg * 100.).round() as i64 == az
+                    && (b.elevation_deg * 100.).round() as i64 == el
+            })
+        }) {
+            f.labels.push(Label::new(
+                "Unfitted: near-perpendicular beam; model unsupported",
+                95.,
+                40.,
+            ));
+        }
+        if windows.iter().any(|w| {
+            w.beams
+                .iter()
+                .any(|b| !b.temperature_data_supported.is_empty())
+        }) {
+            f.labels.push(Label::new(
+                "Opacity 0.5: preliminary signal/residual support, not parameter error bars",
+                103.,
+                if h_only {85.} else {269.},
+            ));
+        }
+        let name = format!("beam-az{az}-el{el}{}",if h_only {"-h"} else {""});
+        campaign::save(&out.join(format!("{name}-quality.h5")), &serde_json::json!({
+            "start_utc_s":first,"time_step_s":1800,"time_count":nt,"altitude_start_km":100.,"altitude_step_km":5.,"altitude_count":nz,
+            "field_indices":(first_field..5).collect::<Vec<_>>(),
+            "order":"parameter indices [0:Ne,1:Ti,2:Te,3:vi,4:H]; each altitude-major/time-minor",
+            "half_opacity":opacity_masks,
+            "finite_fit_value":available_masks,
+            "h_transition_at_boundary":windows.iter().map(|w|(w.start_utc_s,w.shared_parameters[..2].iter().any(|q|*q<=0.01||*q>=0.99))).collect::<Vec<_>>(),
+            "method":"Necessary support flags only, not joint parameter uncertainties. Accepted solver state and residual RMS<=3 assigned sigma. Ne requires short-lag detection>=5 sigma. Ti/Te and vi also require stored >=8 lag/temperature-interior support; vi must be within1950m/s. Shared H requires two beams with short-lag detection>=5sigma at that height; boundary hits are stored separately and do not blanket-fade H. Prescribed H=0 below500km stays opaque. Missing measurements stay missing; original fitted values are unchanged."
+        }))?;
+        f.save(out.join(format!("{name}.png")))?;
+        f.save(out.join(format!("{name}.pdf")))?;
+    }
+    Ok(())
+}
+fn video(root: &Path, out: &Path) -> Result<()> {
+    let m: Manifest = campaign::load(&root.join("index.h5"))?;
+    let bg: Background = campaign::load(&root.join("background.h5"))?;
+    let times: BTreeSet<_> = m.jobs.iter().map(|j| j.start).collect();
+    let beams: BTreeSet<_> = m
+        .jobs
+        .iter()
+        .map(|j| ((j.az * 100.).round() as i64, (j.el * 100.).round() as i64))
+        .collect();
+    let beams: Vec<_> = beams.into_iter().collect();
+    let nf = syisr_ac::lp480_screen::NF;
+    let nw = (lp480::NS - syisr_ac::lp480_screen::START - nf) / syisr_ac::lp480_screen::HOP + 1;
+    let hann: Vec<_> = (0..nf)
+        .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / (nf - 1) as f64).cos())
+        .collect();
+    let energy = hann.iter().map(|v| v * v).sum::<f64>();
+    let frequency: Vec<_> = (0..nf)
+        .map(|i| (i as f64 - nf as f64 / 2.) * 100000. / nf as f64)
+        .collect();
+    let mut noise = vec![0.; nf];
+    for (i, fr) in frequency.iter().enumerate() {
+        noise[i] = bg.acf[0][0];
+        for l in 1..=lp480::NL {
+            let w = (0..nf - l).map(|j| hann[j] * hann[j + l]).sum::<f64>() / energy;
+            let v = num_complex::Complex64::new(bg.acf[l][0], bg.acf[l][1])
+                * num_complex::Complex64::from_polar(
+                    1.,
+                    std::f64::consts::TAU * fr * l as f64 * lp480::DT,
+                );
+            noise[i] += 2. * w * v.re;
+        }
+    }
+    let audit = hdf5::File::create(out.join("range-doppler.h5"))?;
+    audit
+        .new_dataset_builder()
+        .with_data(&frequency)
+        .create("frequency_hz")?;
+    audit
+        .new_dataset_builder()
+        .with_data(&noise)
+        .create("background_power")?;
+    for (fi, time) in times.iter().enumerate() {
+        let mut f = Figure::new(IntendedUse::ArticleWide);
+        f.width_mm = 300.;
+        f.height_mm = 270.;
+        f.font_pt = 9.;
+        f.raster_dpi = 130.;
+        f.latex.cache = out.join("latex-cache");
+        let t = DateTime::<Utc>::from_timestamp(*time + 28800, 0).unwrap();
+        f.labels.push(Label::new(
+            format!(
+                "SYISR 480 $\\mu$s; {} China local time (UTC+8)",
+                t.format("%d %B %Y, %H:%M")
+            ),
+            150.,
+            5.,
+        ));
+        let scale = f.scale(Scale::new(
+            [-0.02, 0.12],
+            Normalization::Asinh { width: 0.003 },
+            ColorMap::inferno(),
+        )?);
+        let group = audit.create_group(&time.to_string())?;
+        for (bi, (az, el)) in beams.iter().enumerate() {
+            let row = bi / 3;
+            let col = bi % 3;
+            let rect = Rect::new(17. + col as f64 * 96., 20. + row as f64 * 57., 78., 40.);
+            let mut ax = Axes::new(
+                [-25., 25.],
+                [100., 2200.],
+                if row == 3 {
+                    "Frequency offset (kHz)"
+                } else {
+                    ""
+                },
+                if col == 0 { "Slant range (km)" } else { "" },
+            );
+            ax.xticks = vec![-20., 0., 20.];
+            ax.yticks = vec![500., 1000., 1500., 2000.];
+            let mut p = Panel::new(rect, ax);
+            if let Some(job) = m.jobs.iter().find(|j| {
+                j.start == *time
+                    && (j.az * 100.).round() as i64 == *az
+                    && (j.el * 100.).round() as i64 == *el
+            }) {
+                let d: Decoded =
+                    campaign::load(&root.join("products").join(format!("{}.h5", job.id)))?;
+                let mut raw = vec![0.; nw * nf];
+                let mut n = 0.;
+                for b in &d.blocks {
+                    if b.range_doppler_raw.len() == raw.len() {
+                        let count = b.range_doppler_pulses as f64;
+                        n += count;
+                        for (j, v) in raw.iter_mut().enumerate() {
+                            *v += count * b.range_doppler_raw[j];
+                        }
+                    }
+                }
+                if let Some(a) = &d.averaged {
+                    raw = a.range_doppler_raw.clone();
+                    n = a.range_doppler_pulses as f64;
+                    for v in &mut raw {
+                        *v *= n;
+                    }
+                }
+                // The identical measured Hann-window periodogram avoids reconstructing a
+                // narrow DC component from a truncated lag series. This is a
+                // display background; it does not alter fitted lag products.
+                let mut local_noise = vec![0.; nf];
+                if n > 0. {
+                    raw.iter_mut().for_each(|v| *v /= n);
+                    for j in 0..nf {
+                        let mut quiet = (nw.saturating_sub(8)..nw)
+                            .map(|w| raw[w * nf + j])
+                            .collect::<Vec<_>>();
+                        quiet.sort_by(f64::total_cmp);
+                        local_noise[j] =
+                            (quiet[(quiet.len() - 1) / 2] + quiet[quiet.len() / 2]) / 2.;
+                    }
+                    let mut signed = vec![0.; raw.len()];
+                    for w in 0..nw {
+                        let band = raw[w * nf..(w + 1) * nf].iter().sum::<f64>();
+                        for j in 0..nf {
+                            signed[w * nf + j] = if band > 0. {
+                                (raw[w * nf + j] - local_noise[j]) / band
+                            } else {
+                                f64::NAN
+                            };
+                        }
+                    }
+                    let rr: Vec<_> = (0..=nw)
+                        .map(|w| {
+                            (job.front_us * 1e-6
+                                + (syisr_ac::lp480_screen::START as f64
+                                    + (w as f64 - 0.5) * syisr_ac::lp480_screen::HOP as f64
+                                    + (nf as f64 - 1.) / 2.)
+                                    * lp480::DT
+                                - lp480::PW / 2.)
+                                * lp480::C_KM
+                                / 2.
+                        })
+                        .collect();
+                    let xx: Vec<_> = (0..=nf)
+                        .map(|j| (-0.5 * nf as f64 + j as f64 - 0.5) * 100. / nf as f64)
+                        .collect();
+                    p.pcolormesh(xx, rr.clone(), signed.clone(), scale)?;
+                    let g = group.create_group(&format!("az{az}-el{el}"))?;
+                    g.new_dataset_builder()
+                        .with_data(&local_noise)
+                        .create("local_far_range_noise_power")?;
+                    g.new_dataset::<f64>()
+                        .shape((nw, nf))
+                        .deflate(4)
+                        .create("raw_power")?
+                        .write_raw(&raw)?;
+                    g.new_dataset::<f64>()
+                        .shape((nw, nf))
+                        .deflate(4)
+                        .create("signed_power_over_raw_band_power")?
+                        .write_raw(&signed)?;
+                    g.new_dataset_builder()
+                        .with_data(&rr)
+                        .create("range_edges_km")?;
+                }
+            }
+            f.panels.push(p);
+            f.labels.push(Label::new(
+                format!(
+                    "Az {:.0}$^\\circ$, El {:.0}$^\\circ$",
+                    *az as f64 / 100.,
+                    *el as f64 / 100.
+                ),
+                rect.x + rect.width / 2.,
+                rect.y - 3.,
+            ));
+        }
+        f.colorbars.push(Colorbar::new(
+            Rect::new(115., 250., 110., 3.),
+            scale,
+            "Signed power / raw band power",
+            vec![-0.02, 0., 0.01, 0.03, 0.12],
+        ));
+        f.colorbars.last_mut().unwrap().horizontal = true;
+        f.save(out.join(format!("frame-{fi:04}.png")))?;
+    }
+    Ok(())
+}
