@@ -19,3 +19,6 @@ __pycache__/
 # these are never part of a working tree, listed for completeness
 .git/
 memos/
+
+# LaTeX build cache (from jvierine/isr_analysis)
+.latex-cache/
