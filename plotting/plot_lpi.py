@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import h5py
 
 import scipy.signal as ss
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import stuffr
 
 import tx_power as txp

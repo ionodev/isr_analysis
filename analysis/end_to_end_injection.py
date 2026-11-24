@@ -64,7 +64,7 @@ import scipy.constants as sc
 from digital_rf import DigitalRFReader, DigitalMetadataReader
 
 import inject_satellites as inj
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 from radar_timing import TMM
 from tx_delay import fractional_shift
 

@@ -32,7 +32,7 @@ import sys
 import numpy as n
 
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_quality as fq
 
 DAYS = ("2024-04-07", "2024-04-08")

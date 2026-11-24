@@ -1,5 +1,8 @@
 import numpy as n
 import matplotlib.pyplot as plt
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import outlier_lpi as olpi
 import fit_lpi as flpi
 

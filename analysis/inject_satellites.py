@@ -38,7 +38,7 @@ import numpy as n
 import scipy.constants as sc
 from digital_rf import DigitalMetadataReader
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the pipeline modules, one folder up
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import outlier_lpi as olpi
 import satellite_columns as satcol
 from radar_timing import TMM

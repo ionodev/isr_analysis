@@ -55,6 +55,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as n
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import fit_quality as fq
 
 RADAR_FREQ_HZ = 440.2e6

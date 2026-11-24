@@ -85,6 +85,9 @@ def isr_spectrum(freq, k_radar,
 
 
 import matplotlib.pyplot as plt
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline"))  # the pipeline modules
 import isr_spec as isp
 from ISRSpectrum import Specinit
 radar_freq=440.2e6
